@@ -130,17 +130,15 @@ If you've configured a development command, Uzi creates a second window for the 
 
 ### Configuration
 
-Development server settings are configured in `~/.uzi/config.json`:
+Development server settings are configured in `uzi.yaml` in your project root:
 
-```json
-{
-  "dev_command": "npm run dev -- --port $PORT",
-  "port_range": "3000-4000"
-}
+```yaml
+devCommand: npm run dev -- --port $PORT
+portRange: 3000-4000
 ```
 
-- **dev_command**: Command to start your dev server (use `$PORT` placeholder)
-- **port_range**: Range of ports to allocate (format: `start-end`)
+- **devCommand**: Command to start your dev server (use `$PORT` placeholder)
+- **portRange**: Range of ports to allocate (format: `start-end`)
 
 ### Port Allocation
 

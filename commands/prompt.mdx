@@ -33,8 +33,8 @@ Each agent operates in complete isolation, allowing you to:
   Use `random` as the agent name to select random agent names for each instance.
 </ParamField>
 
-<ParamField path="--config" type="string" default="~/.config/uzi/config.json">
-  Path to the Uzi configuration file.
+<ParamField path="--config" type="string" default="uzi.yaml">
+  Path to the Uzi configuration file (defaults to `uzi.yaml` in current directory).
 </ParamField>
 
 ## Arguments
@@ -55,7 +55,7 @@ For each agent, `prompt` creates:
 
 ## Configuration
 
-The prompt command respects these configuration options from `config.json`:
+The prompt command respects these configuration options from `uzi.yaml`:
 
 <ParamField path="devCommand" type="string">
   Command template to start a development server. Use `$PORT` as a placeholder for the assigned port.
@@ -97,13 +97,11 @@ uzi prompt --agents=random:3 "optimize the search algorithm"
 
 ### With Development Server
 
-If your `config.json` includes:
+If your `uzi.yaml` includes:
 
-```json
-{
-  "devCommand": "npm run dev -- --port $PORT",
-  "portRange": "3000-3100"
-}
+```yaml
+devCommand: npm run dev -- --port $PORT
+portRange: 3000-3100
 ```
 
 Then:
@@ -116,7 +114,7 @@ uzi prompt "add dark mode support"
 ### Custom Config Path
 
 ```bash
-uzi prompt --config=/path/to/custom-config.json "implement feature X"
+uzi prompt --config=/path/to/custom-uzi.yaml "implement feature X"
 ```
 
 ## How It Works

@@ -21,7 +21,7 @@ The `reset` command permanently deletes all Uzi data from your system by removin
 **This does NOT affect:**
 - Git repositories or branches (you'll need to clean those manually)
 - Tmux sessions (you'll need to kill those manually)
-- Your Uzi configuration file (`~/.config/uzi/config.json`)
+- Your Uzi configuration file (`uzi.yaml` in your project directories)
 
 ## Interactive Confirmation
 
@@ -77,7 +77,7 @@ You must explicitly type `y` or `yes` to proceed. Any other input cancels the op
   
   - **Git branches**: Agent branches remain in your repository
   - **Tmux sessions**: Active agent sessions keep running
-  - **Configuration**: `~/.config/uzi/config.json` is preserved
+  - **Configuration**: `uzi.yaml` files in your projects are preserved
   
   You must manually clean these up if desired.
 </Warning>
@@ -287,5 +287,5 @@ uzi ls
 </Warning>
 
 <Note>
-  Configuration in `~/.config/uzi/config.json` is **not affected** by reset. Only data in `~/.local/share/uzi/` is deleted.
+  Configuration files (`uzi.yaml` in your projects) are **not affected** by reset. Only data in `~/.local/share/uzi/` is deleted.
 </Note>
