@@ -1,0 +1,90 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Uzi",
+  "projectDescription": "CLI for running large numbers of coding agents in parallel with git worktrees",
+  "theme": "aspen",
+  "primaryColor": "#00ff9d",
+  "lightColor": "#00e68a",
+  "darkColor": "#00cc7a",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/worktrees",
+              "concepts/agents",
+              "concepts/sessions"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/uzi-yaml",
+              "configuration/dev-commands",
+              "configuration/port-management"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/basic-workflow",
+              "guides/managing-agents",
+              "guides/checkpointing",
+              "guides/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Commands",
+        "groups": [
+          {
+            "group": "Command Reference",
+            "pages": [
+              "commands/overview",
+              "commands/prompt",
+              "commands/auto",
+              "commands/ls",
+              "commands/broadcast",
+              "commands/run",
+              "commands/checkpoint",
+              "commands/kill",
+              "commands/reset"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Run multiple AI coding agents in parallel",
+    "Automatic Git worktree management for isolated development",
+    "Tmux session management for each agent",
+    "Automatic development server setup with port management",
+    "Real-time monitoring of agent status and code changes",
+    "Automatic handling of agent prompts and confirmations",
+    "Easy checkpoint and merge of agent changes"
+  ],
+  "publicApiSurface": [
+    "uzi prompt (alias: p) - Create new agent sessions",
+    "uzi auto (alias: a) - Auto-handle agent prompts",
+    "uzi ls (alias: l) - List active agent sessions",
+    "uzi broadcast (alias: b) - Send messages to all agents",
+    "uzi run (alias: r) - Execute commands in all sessions",
+    "uzi checkpoint (alias: c) - Merge agent changes",
+    "uzi kill (alias: k) - Terminate agent sessions",
+    "uzi reset - Remove all Uzi data"
+  ]
+}
