@@ -1,0 +1,156 @@
+---
+title: prompt
+description: Launch AI coding agents with a prompt in isolated environments
+---
+
+## Synopsis
+
+```bash
+uzi prompt [OPTIONS] <prompt-text>
+```
+
+Alias: `p`
+
+## Description
+
+The `prompt` command launches one or more AI coding agents, each in an isolated environment with its own tmux session, git worktree, and branch. Agents execute the provided prompt independently and can optionally run development servers on dedicated ports.
+
+Each agent operates in complete isolation, allowing you to:
+- Run multiple approaches to the same problem in parallel
+- Test different AI models simultaneously
+- Avoid conflicts between concurrent code changes
+
+## Options
+
+<ParamField path="--agents" type="string" default="claude:1">
+  Specify agents to run with their counts in the format `AGENT:COUNT[,AGENT:COUNT...]`.
+  
+  Examples:
+  - `claude:1` - Single Claude agent
+  - `claude:2,codex:1` - Two Claude agents and one Codex agent
+  - `random:3` - Three agents with random names
+  
+  Use `random` as the agent name to select random agent names for each instance.
+</ParamField>
+
+<ParamField path="--config" type="string" default="~/.config/uzi/config.json">
+  Path to the Uzi configuration file.
+</ParamField>
+
+## Arguments
+
+<ParamField path="prompt-text" type="string" required>
+  The prompt to send to the agent(s). All arguments after the options are joined with spaces to form the complete prompt.
+</ParamField>
+
+## Environment Setup
+
+For each agent, `prompt` creates:
+
+1. **Git Worktree**: Isolated working directory at `~/.local/share/uzi/worktrees/{worktree-name}`
+2. **Git Branch**: New branch with pattern `{agent-name}-{project}-{hash}-{uniqueId}`
+3. **Tmux Session**: Named `agent-{project}-{hash}-{agent-name}`
+4. **Agent Window**: Primary tmux window named "agent" where the agent runs
+5. **Dev Server** (optional): Secondary window named "uzi-dev" if configured
+
+## Configuration
+
+The prompt command respects these configuration options from `config.json`:
+
+<ParamField path="devCommand" type="string">
+  Command template to start a development server. Use `$PORT` as a placeholder for the assigned port.
+  
+  Example: `npm run dev -- --port $PORT`
+</ParamField>
+
+<ParamField path="portRange" type="string">
+  Range of ports to allocate for dev servers in format `START-END`.
+  
+  Example: `3000-3100`
+</ParamField>
+
+## Examples
+
+### Basic Usage
+
+```bash
+# Launch single agent with default model
+uzi prompt "implement user authentication"
+```
+
+### Multiple Agents
+
+```bash
+# Run two Claude agents in parallel
+uzi prompt --agents=claude:2 "fix the login bug"
+
+# Mix different models
+uzi prompt --agents=claude:1,codex:1,gpt4:1 "refactor the database layer"
+```
+
+### Random Agent Names
+
+```bash
+# Launch 3 agents with random names (good for distinguishing sessions)
+uzi prompt --agents=random:3 "optimize the search algorithm"
+```
+
+### With Development Server
+
+If your `config.json` includes:
+
+```json
+{
+  "devCommand": "npm run dev -- --port $PORT",
+  "portRange": "3000-3100"
+}
+```
+
+Then:
+
+```bash
+uzi prompt "add dark mode support"
+# Agent runs in window 0, dev server starts in window 1 on auto-assigned port
+```
+
+### Custom Config Path
+
+```bash
+uzi prompt --config=/path/to/custom-config.json "implement feature X"
+```
+
+## How It Works
+
+1. **Parse agents flag** to determine how many agents and which models to use
+2. **For each agent**:
+   - Generate unique identifiers (branch name, session name, worktree name)
+   - Create git worktree from current repository
+   - Create tmux session with agent window
+   - If configured, create dev server window and assign available port
+   - Send the prompt to the agent window
+   - Save state to `~/.local/share/uzi/state.json`
+
+## Port Allocation
+
+When `devCommand` and `portRange` are configured:
+- Ports are allocated sequentially from the available range
+- Already-in-use ports are skipped
+- Each agent gets a unique port to avoid conflicts
+- Port is saved in state for easy access via `uzi ls`
+
+## Related Commands
+
+- [`auto`](/commands/auto) - Automatically handle agent prompts
+- [`ls`](/commands/ls) - List active agents and their status
+- [`checkpoint`](/commands/checkpoint) - Merge agent work back to main branch
+- [`kill`](/commands/kill) - Terminate agent sessions
+
+## Notes
+
+<Note>
+  The agent count for each model must be at least 1. Invalid counts will result in an error.
+</Note>
+
+<Warning>
+  If `devCommand` or `portRange` is not configured, the dev server window will not be created. The agent will still run normally in the main window.
+</Warning>

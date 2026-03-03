@@ -1,0 +1,274 @@
+---
+title: Worktrees
+description: Learn how Uzi uses Git worktrees to isolate agent environments and enable parallel development
+---
+
+## What are Git Worktrees?
+
+Git worktrees allow you to have multiple working directories attached to the same repository. Each worktree can have a different branch checked out, enabling you to work on multiple features simultaneously without switching branches.
+
+<Note>
+Think of worktrees as separate workspaces for the same Git repository. Each workspace has its own files and branch, but they all share the same Git history and objects.
+</Note>
+
+## Why Uzi Uses Worktrees
+
+Uzi leverages Git worktrees to provide:
+
+### 1. Complete Isolation
+
+Each agent works in its own worktree, preventing conflicts:
+
+```bash
+# Agent "sarah" works in her own directory
+~/.local/share/uzi/worktrees/sarah-myapp-a1b2c3d-1234/
+
+# Agent "john" works independently
+~/.local/share/uzi/worktrees/john-myapp-a1b2c3d-5678/
+```
+
+### 2. Branch Independence
+
+Each worktree has its own branch:
+
+- **Base branch**: Automatically detected from `git symbolic-ref refs/remotes/origin/HEAD`
+- **Agent branch**: Unique branch created for each agent
+- **No switching**: Agents don't interfere with your current working directory
+
+### 3. Parallel Development
+
+Multiple agents can work simultaneously on different features without any coordination or locking.
+
+## Worktree Creation Process
+
+When you launch an agent with `uzi prompt`, here's what happens:
+
+### Step 1: Generate Unique Names
+
+Uzi creates unique identifiers for the worktree:
+
+```go
+// From prompt.go:180-185
+timestamp := time.Now().Unix()
+uniqueId := fmt.Sprintf("%d-%d", timestamp, i)
+
+branchName := fmt.Sprintf("%s-%s-%s-%s", randomAgentName, projectDir, gitHash, uniqueId)
+worktreeName := fmt.Sprintf("%s-%s-%s-%s", randomAgentName, projectDir, gitHash, uniqueId)
+```
+
+**Example**: `sarah-myapp-a1b2c3d-1709472000-0`
+
+### Step 2: Create Worktree Directory
+
+Uzi ensures the worktrees directory exists:
+
+```go
+// From prompt.go:197-201
+worktreesDir := filepath.Join(homeDir, ".local", "share", "uzi", "worktrees")
+if err := os.MkdirAll(worktreesDir, 0755); err != nil {
+    log.Error("Error creating worktrees directory", "error", err)
+}
+worktreePath := filepath.Join(worktreesDir, worktreeName)
+```
+
+### Step 3: Add Git Worktree
+
+Uzi creates the worktree with its own branch:
+
+```go
+// From prompt.go:206-212
+cmd := fmt.Sprintf("git worktree add -b %s %s", branchName, worktreePath)
+cmdExec := exec.CommandContext(ctx, "sh", "-c", cmd)
+if err := cmdExec.Run(); err != nil {
+    log.Error("Error creating git worktree", "command", cmd, "error", err)
+}
+```
+
+This runs: `git worktree add -b {branchName} {worktreePath}`
+
+<Info>
+The `-b` flag creates a new branch and checks it out in the worktree simultaneously.
+</Info>
+
+## Worktree Storage Location
+
+All worktrees are stored in a centralized location:
+
+```
+~/.local/share/uzi/
+├── worktrees/
+│   ├── sarah-myapp-a1b2c3d-1234/    # Agent sarah's worktree
+│   │   ├── .git                      # Git metadata (linked to main repo)
+│   │   └── [project files]
+│   ├── john-myapp-a1b2c3d-5678/     # Agent john's worktree
+│   └── emily-myapp-a1b2c3d-9012/    # Agent emily's worktree
+├── worktree/
+│   └── agent-myapp-a1b2c3d-sarah/   # Session metadata
+│       └── tree                      # Current branch name
+└── state.json                        # Global state
+```
+
+### Worktree Metadata
+
+Uzi stores additional metadata about each worktree:
+
+```go
+// From state.go:169-187
+func (sm *StateManager) storeWorktreeBranch(sessionName string) error {
+    homeDir, err := os.UserHomeDir()
+    agentDir := filepath.Join(homeDir, ".local", "share", "uzi", "worktree", sessionName)
+    if err := os.MkdirAll(agentDir, 0755); err != nil {
+        return err
+    }
+    
+    branchFile := filepath.Join(agentDir, "tree")
+    currentBranch := sm.getCurrentBranch()
+    return os.WriteFile(branchFile, []byte(currentBranch), 0644)
+}
+```
+
+This stores the current branch name in `~/.local/share/uzi/worktree/{sessionName}/tree`.
+
+## State Tracking
+
+Each worktree's state is tracked in `state.json`:
+
+```json
+{
+  "agent-myapp-a1b2c3d-sarah": {
+    "git_repo": "git@github.com:user/myapp.git",
+    "branch_from": "main",
+    "branch_name": "sarah-myapp-a1b2c3d-1234",
+    "prompt": "Add authentication to the API",
+    "worktree_path": "/home/user/.local/share/uzi/worktrees/sarah-myapp-a1b2c3d-1234",
+    "port": 3000,
+    "model": "claude",
+    "created_at": "2024-03-15T10:30:00Z",
+    "updated_at": "2024-03-15T10:45:00Z"
+  }
+}
+```
+
+## Viewing Worktree Changes
+
+You can see what each agent has changed using `uzi ls`:
+
+```bash
+$ uzi ls
+AGENT   MODEL   STATUS    DIFF        ADDR                    PROMPT
+sarah   claude  running   +45/-12     http://localhost:3000   Add authentication
+john    codex   ready     +23/-8      http://localhost:3001   Fix bug in parser
+```
+
+The diff statistics are calculated by:
+
+```go
+// From ls.go:53
+shellCmdString := "git add -A . && git diff --cached --shortstat HEAD && git reset HEAD > /dev/null"
+```
+
+<Tip>
+Use `uzi ls -w` to watch agent progress in real-time and see their diff stats update.
+</Tip>
+
+## Checkpointing Worktree Changes
+
+When an agent completes a task, you can merge its changes back:
+
+```bash
+uzi checkpoint sarah "Implemented authentication"
+```
+
+This process:
+
+1. **Commits changes** in the agent's worktree
+2. **Finds the merge base** between your current branch and the agent's branch
+3. **Rebases** the agent's commits onto your branch
+
+```go
+// From checkpoint.go:146-152
+rebaseCmd := exec.CommandContext(ctx, "git", "rebase", agentBranchName)
+rebaseCmd.Dir = currentDir
+if err := rebaseCmd.Run(); err != nil {
+    return fmt.Errorf("error rebasing agent changes: %w", err)
+}
+```
+
+## Cleanup
+
+When you kill an agent with `uzi kill`, Uzi removes:
+
+1. The Git worktree
+2. The Git branch
+3. The worktree metadata directory
+4. The state entry
+
+```go
+// From kill.go:56-62
+removeCmd := exec.CommandContext(ctx, "git", "worktree", "remove", "--force", worktreeInfo.WorktreePath)
+if err := removeCmd.Run(); err != nil {
+    log.Error("Error removing git worktree", "path", worktreeInfo.WorktreePath, "error", err)
+}
+
+deleteBranchCmd := exec.CommandContext(ctx, "git", "branch", "-D", agentName)
+```
+
+<Warning>
+Worktree removal is permanent. Make sure to checkpoint any changes you want to keep before killing an agent.
+</Warning>
+
+## Best Practices
+
+### Keep Your Main Branch Clean
+
+Always work from a stable base branch (main/master). Uzi automatically detects your default branch:
+
+```go
+// From state.go:57-72
+func (sm *StateManager) getBranchFrom() string {
+    cmd := exec.Command("git", "symbolic-ref", "refs/remotes/origin/HEAD")
+    output, err := cmd.Output()
+    if err != nil {
+        return "main" // Fallback to main
+    }
+    // Extract branch name from refs/remotes/origin/HEAD
+}
+```
+
+### Checkpoint Regularly
+
+Checkpoint agent work frequently to:
+- Integrate incremental progress
+- Test changes in your main environment
+- Reduce the risk of losing work
+
+### Clean Up Old Agents
+
+Remove completed or failed agents to free up disk space:
+
+```bash
+# Kill a specific agent
+uzi kill sarah
+
+# Kill all agents for the current repo
+uzi kill all
+```
+
+## Limitations
+
+<Accordion title="Worktree Limitations">
+  - **Disk space**: Each worktree contains a full copy of your project files
+  - **Same repository**: All worktrees must be from the same Git repository
+  - **No nested worktrees**: You can't create a worktree inside another worktree
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Sessions" icon="window" href="/concepts/sessions">
+    Learn how Tmux sessions manage agent environments
+  </Card>
+  <Card title="Checkpoint Command" icon="bookmark" href="/commands/checkpoint">
+    Deep dive into merging agent changes
+  </Card>
+</CardGroup>

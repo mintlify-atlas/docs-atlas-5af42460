@@ -1,0 +1,397 @@
+---
+title: Agents
+description: Understand how Uzi names and manages AI agents for autonomous development
+---
+
+## What are Agents?
+
+In Uzi, an **agent** is an AI-powered development assistant that works autonomously in an isolated Git worktree. Each agent:
+
+- Has a unique random name (like "sarah", "john", or "emily")
+- Runs in its own Tmux session
+- Executes a specific AI model or command
+- Works on its own Git branch
+
+<Info>
+Agents are designed to work independently, allowing you to run multiple AI assistants in parallel without conflicts.
+</Info>
+
+## Random Agent Naming
+
+Uzi assigns each agent a random name from a predefined list. This makes it easy to identify and manage multiple agents.
+
+### Name List
+
+Agent names are selected from a pool of 100+ common first names:
+
+```go
+// From agents.go:9-127
+const AgentNames = `john
+emily
+michael
+sarah
+david
+jessica
+christopher
+ashley
+// ... 100+ names total
+```
+
+### Random Selection
+
+When you create an agent, Uzi randomly selects a name:
+
+```go
+// From agents.go:130-134
+func GetRandomAgent() string {
+    agents := strings.Split(strings.TrimSpace(AgentNames), "\n")
+    rand.Seed(time.Now().UnixNano())
+    return agents[rand.Intn(len(agents))]
+}
+```
+
+**Example output**:
+```bash
+$ uzi prompt --agents=claude:1 "Fix the login bug"
+sarah: claude: Fix the login bug
+```
+
+<Note>
+Even if you specify `--agents=random:1`, the system always generates a random name for identification. The "random" keyword just means the command will also use that random name.
+</Note>
+
+## Agent Configuration
+
+When you launch agents, you specify them using the format: `COMMAND:COUNT`
+
+### Basic Syntax
+
+```bash
+uzi prompt --agents=COMMAND:COUNT "your prompt"
+```
+
+- **COMMAND**: The agent command or model to use (e.g., `claude`, `codex`, `random`)
+- **COUNT**: Number of agents to launch with that command
+
+### Examples
+
+<CodeGroup>
+```bash Single Agent
+# Launch 1 Claude agent
+uzi prompt --agents=claude:1 "Implement authentication"
+```
+
+```bash Multiple Agents (Same Command)
+# Launch 3 Claude agents working on the same prompt
+uzi prompt --agents=claude:3 "Add unit tests"
+```
+
+```bash Multiple Agent Types
+# Launch 2 Claude agents and 1 Codex agent
+uzi prompt --agents=claude:2,codex:1 "Refactor the API"
+```
+
+```bash Random Agent Command
+# The agent name AND command are both random
+uzi prompt --agents=random:1 "Fix TypeScript errors"
+```
+</CodeGroup>
+
+### Parsing Logic
+
+Uzi parses the agents flag into structured configuration:
+
+```go
+// From prompt.go:42-74
+func parseAgents(agentsStr string) (map[string]AgentConfig, error) {
+    agentConfigs := make(map[string]AgentConfig)
+    
+    // Split by comma for multiple agent configurations
+    agentPairs := strings.Split(agentsStr, ",")
+    
+    for _, pair := range agentPairs {
+        // Split by colon for agent:count
+        parts := strings.Split(strings.TrimSpace(pair), ":")
+        if len(parts) != 2 {
+            return nil, fmt.Errorf("invalid agent format: %s (expected agent:count)", pair)
+        }
+        
+        agent := strings.TrimSpace(parts[0])
+        countStr := strings.TrimSpace(parts[1])
+        
+        count, err := strconv.Atoi(countStr)
+        if err != nil {
+            return nil, fmt.Errorf("invalid count for agent %s: %s", agent, countStr)
+        }
+        
+        agentConfigs[agent] = AgentConfig{
+            Command: agent,
+            Count:   count,
+        }
+    }
+    
+    return agentConfigs, nil
+}
+```
+
+## Agent Lifecycle
+
+### 1. Creation
+
+When you run `uzi prompt`, for each agent:
+
+```go
+// From prompt.go:142-153
+for agent, config := range agentConfigs {
+    for i := 0; i < config.Count; i++ {
+        // Always get a random agent name
+        randomAgentName := agents.GetRandomAgent()
+        
+        // Use specified agent for command (unless it's "random")
+        commandToUse := config.Command
+        if agent == "random" {
+            commandToUse = randomAgentName
+        }
+        
+        fmt.Printf("%s: %s: %s\n", randomAgentName, commandToUse, promptText)
+    }
+}
+```
+
+**Output**:
+```
+sarah: claude: Implement authentication
+john: claude: Implement authentication
+emily: claude: Implement authentication
+```
+
+### 2. Execution
+
+The agent command is sent to the Tmux session:
+
+```go
+// From prompt.go:305-310
+tmuxCmd := fmt.Sprintf("tmux send-keys -t %s:agent '%s \"%s\"' C-m", sessionName, commandToUse)
+tmuxCmdExec := exec.CommandContext(ctx, "sh", "-c", fmt.Sprintf(tmuxCmd, promptText))
+if err := tmuxCmdExec.Run(); err != nil {
+    log.Error("Error sending keys to tmux", "command", tmuxCmd, "error", err)
+}
+```
+
+This runs: `{commandToUse} "{promptText}"` in the agent's Tmux window.
+
+### 3. Monitoring
+
+You can monitor agent status with `uzi ls`:
+
+```bash
+$ uzi ls
+AGENT   MODEL   STATUS    DIFF        ADDR                    PROMPT
+sarah   claude  running   +45/-12     http://localhost:3000   Implement auth
+john    claude  ready     +23/-8      http://localhost:3001   Implement auth
+emily   claude  running   +67/-34     http://localhost:3002   Implement auth
+```
+
+Status is determined by inspecting the Tmux pane content:
+
+```go
+// From ls.go:94-104
+func getAgentStatus(sessionName string) string {
+    content, err := getPaneContent(sessionName)
+    if err != nil {
+        return "unknown"
+    }
+    
+    if strings.Contains(content, "esc to interrupt") || strings.Contains(content, "Thinking") {
+        return "running"
+    }
+    return "ready"
+}
+```
+
+### 4. Checkpointing
+
+Merge an agent's work back to your branch:
+
+```bash
+uzi checkpoint sarah "Implemented authentication"
+```
+
+The checkpoint command finds the agent by name:
+
+```go
+// From checkpoint.go:52-64
+for _, session := range activeSessions {
+    // Extract agent name from session (format: agent-projectDir-gitHash-agentName)
+    parts := strings.Split(session, "-")
+    if len(parts) >= 4 && parts[0] == "agent" {
+        sessionAgentName := strings.Join(parts[3:], "-")
+        if sessionAgentName == agentName {
+            sessionToCheckpoint = session
+            break
+        }
+    }
+}
+```
+
+### 5. Cleanup
+
+Remove an agent when you're done:
+
+```bash
+uzi kill sarah
+```
+
+This kills the Tmux session, removes the worktree, and deletes the state entry.
+
+## Agent State
+
+Each agent's state is tracked in `~/.local/share/uzi/state.json`:
+
+```json
+{
+  "agent-myapp-a1b2c3d-sarah": {
+    "git_repo": "git@github.com:user/myapp.git",
+    "branch_from": "main",
+    "branch_name": "sarah-myapp-a1b2c3d-1234",
+    "prompt": "Implement authentication",
+    "worktree_path": "/home/user/.local/share/uzi/worktrees/sarah-myapp-a1b2c3d-1234",
+    "port": 3000,
+    "model": "claude",
+    "created_at": "2024-03-15T10:30:00Z",
+    "updated_at": "2024-03-15T10:45:00Z"
+  }
+}
+```
+
+### State Management
+
+State is saved after successful agent creation:
+
+```go
+// From prompt.go:313-319
+stateManager := state.NewStateManager()
+if stateManager != nil {
+    if err := stateManager.SaveStateWithPort(promptText, branchName, sessionName, worktreePath, commandToUse, selectedPort); err != nil {
+        log.Error("Error saving state", "error", err)
+    }
+}
+```
+
+<Tip>
+The state file is your source of truth for all active agents. You can inspect it directly at `~/.local/share/uzi/state.json`.
+</Tip>
+
+## Multi-Agent Strategies
+
+### Parallel Feature Development
+
+Launch multiple agents to work on different aspects simultaneously:
+
+```bash
+uzi prompt --agents=claude:3 "Implement the user dashboard"
+```
+
+Each agent (sarah, john, emily) will independently attempt the same prompt, giving you multiple approaches to choose from.
+
+### Different Models
+
+Compare outputs from different AI models:
+
+```bash
+uzi prompt --agents=claude:1,codex:1 "Optimize the database queries"
+```
+
+### Iterative Refinement
+
+Launch one agent, checkpoint its work, then launch another to build on it:
+
+```bash
+# Agent 1
+uzi prompt --agents=claude:1 "Create the API endpoints"
+uzi checkpoint sarah "Added API endpoints"
+
+# Agent 2 builds on the checkpointed work
+uzi prompt --agents=claude:1 "Add API tests"
+```
+
+## Agent Commands
+
+### Default Agent Commands
+
+The most common agent commands are:
+
+- **`claude`**: Uses Claude AI (most common)
+- **`codex`**: Uses OpenAI Codex
+- **`random`**: Uses a random agent name for the command
+
+### Custom Agent Commands
+
+You can specify any command as an agent:
+
+```bash
+# Use a custom script
+uzi prompt --agents=my-custom-agent:1 "Build feature X"
+```
+
+Uzi will execute: `my-custom-agent "Build feature X"` in the agent's Tmux window.
+
+<Warning>
+Make sure your custom agent command is available in your PATH and can accept a prompt string as an argument.
+</Warning>
+
+## Best Practices
+
+### Use Descriptive Prompts
+
+Give agents clear, specific instructions:
+
+```bash
+# Good
+uzi prompt --agents=claude:1 "Add input validation to the login form with email format checking and password strength requirements"
+
+# Less effective
+uzi prompt --agents=claude:1 "Fix login"
+```
+
+### Monitor Agent Progress
+
+Use watch mode to see real-time updates:
+
+```bash
+uzi ls -w
+```
+
+### Checkpoint Incrementally
+
+Don't wait for agents to "finish" - checkpoint useful progress:
+
+```bash
+# Agent made progress on part of the task
+uzi checkpoint sarah "Implemented password validation"
+
+# Launch another agent to continue
+uzi prompt --agents=claude:1 "Add email validation"
+```
+
+### Clean Up Completed Agents
+
+Remove agents when you're done with their work:
+
+```bash
+uzi kill sarah
+
+# Or remove all agents
+uzi kill all
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Sessions" icon="window" href="/concepts/sessions">
+    Learn how agents run in Tmux sessions
+  </Card>
+  <Card title="Prompt Command" icon="terminal" href="/commands/prompt">
+    Master the prompt command syntax
+  </Card>
+</CardGroup>

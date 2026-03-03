@@ -1,0 +1,398 @@
+---
+title: Managing Agents
+description: Advanced techniques for monitoring, controlling, and coordinating multiple AI coding agents
+---
+
+Learn how to effectively manage multiple agents running in parallel, from monitoring their progress to executing commands across all agents at once.
+
+## Monitoring Agents
+
+### Listing Active Agents
+
+The `uzi ls` command shows all active agent sessions for the current repository:
+
+```bash
+uzi ls
+```
+
+**Example output:**
+```
+AGENT            MODEL   STATUS    DIFF       ADDR                     PROMPT
+funny-elephant   claude  ready     +127/-23   http://localhost:3000    Implement user authentication
+wise-dolphin     codex   running   +89/-12    http://localhost:3001    Add API endpoints
+brave-tiger      claude  ready     +0/-0      http://localhost:3002    Write unit tests
+```
+
+### Watch Mode
+
+Use watch mode to continuously monitor agent progress:
+
+```bash
+uzi ls -w  # Refreshes every second
+```
+
+<Tip>
+Watch mode is perfect for keeping an eye on multiple agents. The screen refreshes automatically, showing real-time status updates and diff changes.
+</Tip>
+
+### Understanding Agent Status
+
+The `STATUS` column shows what each agent is currently doing:
+
+- **ready** (green): Agent is idle, waiting for input
+- **running** (yellow): Agent is actively thinking or executing tasks
+- **unknown**: Unable to determine status (tmux session may have issues)
+
+Status is determined by inspecting the agent's tmux pane content for keywords like "esc to interrupt" or "Thinking".
+
+### Understanding Diff Stats
+
+The `DIFF` column shows code changes compared to the base branch:
+
+- `+127/-23` means 127 lines added, 23 lines deleted
+- `+0/-0` means no changes yet
+- Green numbers for additions, red numbers for deletions
+
+This is calculated by running:
+```bash
+git add -A . && git diff --cached --shortstat HEAD
+```
+
+### Agent Session Names
+
+Internal session names follow the pattern:
+```
+agent-<projectDir>-<gitHash>-<agentName>
+```
+
+Example: `agent-myproject-a1b2c3d-funny-elephant`
+
+For commands, you only need the agent name (e.g., `funny-elephant`).
+
+## Attaching to Agent Sessions
+
+Sometimes you need to directly interact with an agent's tmux session.
+
+### List All Sessions
+
+```bash
+tmux ls
+```
+
+**Output:**
+```
+agent-myproject-a1b2c3d-funny-elephant: 2 windows (created Tue Mar 03 10:23:45 2026)
+agent-myproject-a1b2c3d-wise-dolphin: 2 windows (created Tue Mar 03 10:23:46 2026)
+agent-myproject-a1b2c3d-brave-tiger: 2 windows (created Tue Mar 03 10:23:47 2026)
+```
+
+### Attach to a Session
+
+```bash
+tmux attach -t agent-myproject-a1b2c3d-funny-elephant
+```
+
+Or using the shortened form (if unique):
+```bash
+tmux attach -t funny-elephant
+```
+
+### Navigate Tmux Windows
+
+Each agent session has multiple windows:
+
+- **Window 0 (agent)**: The AI agent interface
+- **Window 1 (uzi-dev)**: Development server output (if configured)
+
+**Keyboard shortcuts:**
+- `Ctrl+B` then `0` - Switch to agent window
+- `Ctrl+B` then `1` - Switch to dev server window
+- `Ctrl+B` then `n` - Next window
+- `Ctrl+B` then `p` - Previous window
+- `Ctrl+B` then `d` - Detach from session
+- `Ctrl+B` then `[` - Enter scroll mode (navigate with arrow keys, `q` to exit)
+
+<Warning>
+When manually interacting with an agent, be careful not to interfere with `uzi auto`. Detach from the session before resuming automated operation.
+</Warning>
+
+## Killing Agents
+
+### Kill a Specific Agent
+
+Terminate a single agent and clean up its resources:
+
+```bash
+uzi kill funny-elephant
+```
+
+**What gets removed:**
+1. Tmux session terminated
+2. Git worktree removed from `~/.local/share/uzi/worktrees/`
+3. Git branch deleted
+4. State entries cleaned from `~/.local/share/uzi/`
+
+**Output:**
+```
+Deleted agent: funny-elephant
+```
+
+### Kill All Agents
+
+Remove all agents for the current repository:
+
+```bash
+uzi kill all
+```
+
+**Output:**
+```
+Deleted agent: funny-elephant
+Deleted agent: wise-dolphin
+Deleted agent: brave-tiger
+Successfully deleted 3 agent(s)
+```
+
+<Tip>
+Use `uzi kill all` when switching to a different task or when you're done with a coding session. This frees up ports and disk space.
+</Tip>
+
+### When to Kill vs Checkpoint
+
+**Kill when:**
+- The agent's approach didn't work out
+- You want to free up resources
+- The agent completed its task and you don't need the worktree anymore
+
+**Checkpoint when:**
+- You want to merge the agent's work into your branch
+- The implementation looks good and you want to keep it
+- You need to preserve the agent's changes before killing it
+
+<Warning>
+Killing an agent without checkpointing will permanently lose all its work. Always checkpoint valuable changes first.
+</Warning>
+
+## Running Commands Across Agents
+
+Execute a command in all active agent sessions simultaneously.
+
+### Basic Usage
+
+```bash
+uzi run "git status"
+```
+
+This creates a new tmux window in each agent session and runs the command.
+
+**Output:**
+```
+Running command 'git status' in 3 agent sessions:
+
+=== agent-myproject-a1b2c3d-funny-elephant ===
+On branch funny-elephant-myproject-a1b2c3d-1234567890-0
+Changes not staged for commit:
+  modified:   src/api/users.js
+  modified:   src/api/auth.js
+
+=== agent-myproject-a1b2c3d-wise-dolphin ===
+...
+```
+
+### Run and Delete Window
+
+Run a command and automatically clean up the tmux window:
+
+```bash
+uzi run --delete "npm test"
+```
+
+Useful for quick checks where you don't need to keep the output window.
+
+### Common Use Cases
+
+**Check git status across all agents:**
+```bash
+uzi run "git status"
+```
+
+**Run tests in all agent worktrees:**
+```bash
+uzi run "npm test"
+```
+
+**Check for TypeScript errors:**
+```bash
+uzi run "npm run type-check"
+```
+
+**View recent commits:**
+```bash
+uzi run "git log --oneline -5"
+```
+
+**Install a new dependency in all worktrees:**
+```bash
+uzi run "npm install lodash"
+```
+
+<Tip>
+The `uzi run` command executes in each agent's worktree directory, so all file paths and git operations are relative to that worktree.
+</Tip>
+
+## Broadcasting Messages
+
+Send instructions to all agents at once.
+
+```bash
+uzi broadcast "Add error handling for all API calls"
+```
+
+**What happens:**
+- Message is typed into each agent's input as if you typed it manually
+- Automatically presses Enter after the message
+- All agents receive the same instruction simultaneously
+
+**Output:**
+```
+Broadcasting message to 3 agent sessions:
+
+=== agent-myproject-a1b2c3d-funny-elephant ===
+
+=== agent-myproject-a1b2c3d-wise-dolphin ===
+
+=== agent-myproject-a1b2c3d-brave-tiger ===
+```
+
+### When to Use Broadcast
+
+**Good uses:**
+- Adding requirements after agents have started
+- Course corrections when agents are going in the wrong direction
+- Providing additional context or constraints
+- Asking for status updates or explanations
+
+**Example scenarios:**
+```bash
+# Add a new requirement
+uzi broadcast "Also add input validation using Zod"
+
+# Request documentation
+uzi broadcast "Add JSDoc comments to all public functions"
+
+# Ask for explanation
+uzi broadcast "Explain your architectural decisions"
+
+# Provide context
+uzi broadcast "We're using TypeScript 5.0, use the latest syntax"
+```
+
+<Warning>
+Broadcast sends the exact same message to all agents. If you need to give different instructions to specific agents, attach to their individual sessions instead.
+</Warning>
+
+## Advanced Monitoring
+
+### Checking Agent Worktrees
+
+All agent worktrees are stored in:
+```bash
+~/.local/share/uzi/worktrees/
+```
+
+You can directly explore an agent's files:
+```bash
+cd ~/.local/share/uzi/worktrees/funny-elephant-myproject-a1b2c3d-1234567890-0
+ls -la
+git log
+```
+
+### Viewing Development Servers
+
+Each agent gets its own port (if `devCommand` and `portRange` are configured in `uzi.yaml`).
+
+Visit the URLs shown in `uzi ls` output:
+```
+http://localhost:3000  # funny-elephant's dev server
+http://localhost:3001  # wise-dolphin's dev server
+http://localhost:3002  # brave-tiger's dev server
+```
+
+<Tip>
+Open all agent dev servers in separate browser tabs to compare their implementations side-by-side.
+</Tip>
+
+### Inspecting State Files
+
+Uzi tracks agent state in:
+```bash
+~/.local/share/uzi/state.json
+```
+
+This JSON file contains:
+- Agent prompts
+- Branch names
+- Worktree paths
+- Port assignments
+- Model names
+- Last updated timestamps
+
+```bash
+cat ~/.local/share/uzi/state.json | jq
+```
+
+## Organizing Multi-Agent Workflows
+
+### Strategy 1: Parallel Exploration
+
+Run multiple agents on the same task to compare approaches:
+
+```bash
+uzi prompt --agents claude:3 "Implement a caching layer for the API"
+uzi ls -w  # Watch all three approaches
+# Visit their dev servers to test
+# Checkpoint the best one
+uzi checkpoint brave-tiger "feat: add Redis caching layer"
+uzi kill wise-dolphin
+uzi kill funny-elephant
+```
+
+### Strategy 2: Divide and Conquer
+
+Split work across agents with different prompts:
+
+```bash
+uzi prompt --agents claude:1 "Implement user authentication endpoints"
+uzi prompt --agents codex:1 "Write unit tests for the authentication system"
+uzi prompt --agents claude:1 "Create API documentation for auth endpoints"
+```
+
+Then use `uzi broadcast` for global updates:
+```bash
+uzi broadcast "We're using JWT tokens, not sessions"
+```
+
+### Strategy 3: Iterative Refinement
+
+Keep one agent, iterate with broadcasts:
+
+```bash
+uzi prompt --agents claude:1 "Build a user dashboard"
+# Wait for initial implementation
+uzi broadcast "Add charts using Chart.js"
+# Wait for charts
+uzi broadcast "Make the dashboard responsive for mobile"
+# Checkpoint when satisfied
+uzi checkpoint funny-elephant "feat: add responsive user dashboard with charts"
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Checkpointing" icon="bookmark" href="/guides/checkpointing">
+    Learn how to merge agent work into your main branch
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/guides/troubleshooting">
+    Solve common issues with agents and tmux sessions
+  </Card>
+</CardGroup>

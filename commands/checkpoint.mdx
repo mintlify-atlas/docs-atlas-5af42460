@@ -1,0 +1,285 @@
+---
+title: checkpoint
+description: Merge agent changes back to the main worktree and commit
+---
+
+## Synopsis
+
+```bash
+uzi checkpoint <agent-name> <commit-message>
+```
+
+Alias: `c`
+
+## Description
+
+The `checkpoint` command integrates an agent's work back into your main worktree by rebasing the agent's branch onto your current branch. This allows you to incorporate successful agent changes while maintaining a clean git history.
+
+The command:
+1. Commits any uncommitted changes in the agent's worktree
+2. Rebases the agent's branch onto your current branch
+3. Preserves the full commit history from the agent's work
+
+## Arguments
+
+<ParamField path="agent-name" type="string" required>
+  The name of the agent whose changes you want to checkpoint. This is the short name shown in `uzi ls` output (e.g., `thoughtful-tesla`).
+</ParamField>
+
+<ParamField path="commit-message" type="string" required>
+  Commit message for any uncommitted changes in the agent's worktree. If the agent has already committed everything, this is used but may not create a new commit.
+</ParamField>
+
+## How It Works
+
+<Steps>
+  <Step title="Find Agent Session">
+    Locates the active session matching the provided agent name by searching all active sessions for the current repository.
+  </Step>
+  
+  <Step title="Validate">
+    - Verifies the agent's branch exists
+    - Confirms the agent's worktree is accessible
+    - Gets the current branch in your main worktree
+  </Step>
+  
+  <Step title="Commit Agent Changes">
+    Stages and commits all uncommitted changes in the agent's worktree using the provided commit message.
+  </Step>
+  
+  <Step title="Calculate Merge Base">
+    Finds where the agent's branch diverged from your current branch using `git merge-base`.
+  </Step>
+  
+  <Step title="Rebase">
+    Rebases the agent's branch onto your current branch, bringing all commits into your branch history.
+  </Step>
+</Steps>
+
+## Examples
+
+### Basic Checkpoint
+
+```bash
+# First, see which agents are active
+uzi ls
+
+# Checkpoint an agent's work
+uzi checkpoint thoughtful-tesla "feat: implement user authentication"
+```
+
+### Full Workflow
+
+```bash
+# 1. Launch agent with a task
+uzi prompt "add user authentication"
+
+# 2. Monitor progress
+uzi ls -w
+
+# 3. When satisfied with changes, checkpoint
+uzi checkpoint thoughtful-tesla "feat: add auth module"
+
+# 4. Clean up agent
+uzi kill thoughtful-tesla
+```
+
+### Multiple Checkpoints
+
+```bash
+# Checkpoint multiple agents sequentially
+uzi checkpoint agent-1 "feat: add feature A"
+uzi checkpoint agent-2 "feat: add feature B" 
+uzi checkpoint agent-3 "feat: add feature C"
+```
+
+## Understanding Rebase
+
+The checkpoint uses `git rebase` to integrate changes:
+
+<CodeGroup>
+```bash Before Checkpoint
+Your branch:    A---B---C (current)
+                     \
+Agent branch:         D---E---F (agent's work)
+```
+
+```bash After Checkpoint
+Your branch:    A---B---C---D'---E'---F' (current + agent's commits)
+```
+</CodeGroup>
+
+All of the agent's commits are replayed on top of your current branch.
+
+## Commit Count
+
+The command shows how many commits will be integrated:
+
+```
+Checkpointing 3 commits from agent: thoughtful-tesla
+```
+
+This count represents all commits in the agent's branch that are not in your current branch.
+
+## Output
+
+Example output:
+```
+Checkpointing 3 commits from agent: thoughtful-tesla
+Successfully checkpointed changes from agent: thoughtful-tesla
+Successfully committed changes with message: feat: implement user authentication
+```
+
+## Git Operations Performed
+
+In the agent's worktree:
+```bash
+git add .
+git commit -am "<your-message>"
+```
+
+In your main worktree:
+```bash
+git merge-base <current-branch> <agent-branch>
+git rev-list --count <merge-base>..<agent-branch>
+git rebase <agent-branch>
+```
+
+## Error Handling
+
+<AccordionGroup>
+  <Accordion title="Agent Not Found">
+    ```
+    no active session found for agent: unknown-agent
+    ```
+    Verify the agent name with `uzi ls` and use the exact name shown.
+  </Accordion>
+  
+  <Accordion title="Branch Does Not Exist">
+    ```
+    agent branch does not exist: branch-name
+    ```
+    The agent's branch may have been deleted. Check `git branch -a`.
+  </Accordion>
+  
+  <Accordion title="Rebase Conflicts">
+    ```
+    error rebasing agent changes: ...
+    ```
+    Manual conflict resolution required:
+    1. Resolve conflicts in your files
+    2. `git add` resolved files
+    3. `git rebase --continue`
+  </Accordion>
+  
+  <Accordion title="Invalid State">
+    ```
+    invalid state for session: session-name
+    ```
+    The state file may be corrupted. Check `~/.local/share/uzi/state.json`.
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Review Before Checkpointing">
+    Always review the agent's changes before checkpointing:
+    
+    ```bash
+    # Check the diff statistics
+    uzi ls
+    
+    # Run commands to inspect changes
+    uzi run git diff --stat
+    uzi run git log --oneline
+    ```
+  </Accordion>
+  
+  <Accordion title="Test Agent Changes">
+    Verify the agent's code works before integrating:
+    
+    ```bash
+    # Run tests in the agent's environment
+    uzi run npm test
+    
+    # If tests pass, checkpoint
+    uzi checkpoint agent-name "feat: add feature"
+    ```
+  </Accordion>
+  
+  <Accordion title="Descriptive Commit Messages">
+    Use meaningful commit messages that describe the agent's contribution:
+    
+    ```bash
+    # Good
+    uzi checkpoint agent-1 "feat: implement OAuth2 authentication flow"
+    
+    # Avoid
+    uzi checkpoint agent-1 "changes"
+    ```
+  </Accordion>
+  
+  <Accordion title="Clean Up After">
+    Kill the agent after successful checkpoint to free resources:
+    
+    ```bash
+    uzi checkpoint agent-name "feat: add feature"
+    uzi kill agent-name
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## When to Checkpoint
+
+<Check>
+  **Good times to checkpoint:**
+  - Agent completed the requested task
+  - Tests pass in agent's environment
+  - Code review of agent's changes is complete
+  - You want to preserve incremental progress
+</Check>
+
+<Warning>
+  **Avoid checkpointing when:**
+  - Agent is still actively working (status: running)
+  - Tests are failing
+  - Changes conflict with recent work in main branch
+  - You haven't reviewed what the agent changed
+</Warning>
+
+## Alternative: Manual Integration
+
+If you prefer manual control:
+
+```bash
+# 1. Find the agent's branch name
+uzi ls
+# Note: Full branch name is in state file
+
+# 2. Manually cherry-pick or merge
+git cherry-pick <agent-branch>
+# or
+git merge <agent-branch>
+```
+
+## Related Commands
+
+- [`prompt`](/commands/prompt) - Create agents whose work you'll checkpoint
+- [`ls`](/commands/ls) - See agent status before checkpointing
+- [`run`](/commands/run) - Test agent code before checkpointing
+- [`kill`](/commands/kill) - Clean up agent after checkpointing
+
+## Notes
+
+<Tip>
+  Always run `uzi ls` before checkpointing to verify the agent name and see the diff statistics.
+</Tip>
+
+<Warning>
+  If the rebase encounters conflicts, you'll need to resolve them manually. Uzi does not provide automatic conflict resolution.
+</Warning>
+
+<Note>
+  The checkpoint command operates on your **current branch**. Make sure you're on the correct branch before running the command.
+</Note>

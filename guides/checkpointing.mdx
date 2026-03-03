@@ -1,0 +1,467 @@
+---
+title: Checkpointing
+description: Merge agent changes back into your main branch using Uzi's checkpoint system
+---
+
+Checkpointing is how you bring an agent's work from its isolated worktree back into your current branch. This guide explains the process in detail and shares best practices.
+
+## What is Checkpointing?
+
+Checkpointing rebases an agent's branch onto your current branch, effectively merging all the agent's commits and changes into your working directory.
+
+**What happens during a checkpoint:**
+
+1. All changes in the agent's worktree are staged (`git add .`)
+2. A commit is created on the agent's branch with your message
+3. The commit base is calculated using `git merge-base`
+4. The agent's branch is rebased onto your current branch
+5. All changes appear in your current working directory
+
+<Warning>
+Checkpointing uses git rebase, not merge. This creates a linear history but means you should understand your current branch state before checkpointing.
+</Warning>
+
+## Basic Usage
+
+```bash
+uzi checkpoint <agent-name> "<commit-message>"
+```
+
+**Example:**
+```bash
+uzi checkpoint funny-elephant "feat: add user authentication with JWT"
+```
+
+**Output:**
+```
+Checkpointing 3 commits from agent: funny-elephant
+Successfully checkpointed changes from agent: funny-elephant
+Successfully committed changes with message: feat: add user authentication with JWT
+```
+
+## Step-by-Step Process
+
+Let's walk through exactly what happens during a checkpoint.
+
+<Steps>
+  <Step title="Verify you're on the correct branch">
+    Check your current branch before checkpointing:
+
+    ```bash
+    git branch --show-current
+    ```
+
+    The agent's work will be rebased onto this branch.
+
+    <Tip>
+    Most commonly, you'll be on `main` or `develop` when checkpointing. Make sure this is where you want the changes to land.
+    </Tip>
+  </Step>
+
+  <Step title="Review the agent's work">
+    Before checkpointing, review what the agent has done:
+
+    ```bash
+    # Check the diff stats
+    uzi ls
+
+    # Visit the agent's dev server
+    # (URL shown in uzi ls output)
+    open http://localhost:3000
+
+    # Or inspect the worktree directly
+    cd ~/.local/share/uzi/worktrees/funny-elephant-myproject-a1b2c3d-1234567890-0
+    git log
+    git diff HEAD~3  # See last 3 commits worth of changes
+    ```
+  </Step>
+
+  <Step title="Run the checkpoint command">
+    Execute the checkpoint with a descriptive commit message:
+
+    ```bash
+    uzi checkpoint funny-elephant "feat: add user authentication with JWT"
+    ```
+
+    **Internal process:**
+    ```bash
+    # 1. Stage all changes in agent worktree
+    cd ~/.local/share/uzi/worktrees/funny-elephant-myproject-a1b2c3d-1234567890-0
+    git add .
+
+    # 2. Commit with your message
+    git commit -am "feat: add user authentication with JWT"
+
+    # 3. Find merge base
+    git merge-base main funny-elephant-myproject-a1b2c3d-1234567890-0
+
+    # 4. Rebase onto current branch
+    cd /path/to/your/main/repo
+    git rebase funny-elephant-myproject-a1b2c3d-1234567890-0
+    ```
+  </Step>
+
+  <Step title="Verify the changes">
+    After checkpointing, the changes are now in your current branch:
+
+    ```bash
+    git status
+    git log  # See the commits from the agent
+    git diff HEAD~1  # Review the last commit
+    ```
+
+    Test that everything works in your main environment:
+    ```bash
+    npm test
+    npm run dev
+    ```
+  </Step>
+
+  <Step title="Clean up the agent (optional)">
+    Once you've checkpointed and verified the work, you can kill the agent:
+
+    ```bash
+    uzi kill funny-elephant
+    ```
+
+    <Tip>
+    You can also keep the agent running for further iterations. Checkpointing doesn't automatically kill the agent.
+    </Tip>
+  </Step>
+</Steps>
+
+## Commit Message Conventions
+
+Use conventional commit formats for consistency:
+
+### Feature Addition
+```bash
+uzi checkpoint agent-name "feat: add user dashboard with analytics"
+uzi checkpoint agent-name "feat(api): add pagination to user endpoints"
+```
+
+### Bug Fixes
+```bash
+uzi checkpoint agent-name "fix: resolve race condition in auth flow"
+uzi checkpoint agent-name "fix(ui): correct button alignment on mobile"
+```
+
+### Refactoring
+```bash
+uzi checkpoint agent-name "refactor: migrate to TypeScript"
+uzi checkpoint agent-name "refactor(api): simplify error handling logic"
+```
+
+### Documentation
+```bash
+uzi checkpoint agent-name "docs: add API documentation for auth endpoints"
+```
+
+### Tests
+```bash
+uzi checkpoint agent-name "test: add unit tests for user service"
+```
+
+### Performance
+```bash
+uzi checkpoint agent-name "perf: add caching layer to reduce database queries"
+```
+
+<Tip>
+Following [Conventional Commits](https://www.conventionalcommits.org/) makes it easier to generate changelogs and understand project history.
+</Tip>
+
+## When to Checkpoint
+
+### Good Times to Checkpoint
+
+**After completing a feature:**
+```bash
+# Agent has finished implementing authentication
+uzi checkpoint wise-dolphin "feat: implement JWT authentication"
+```
+
+**After successful testing:**
+```bash
+# Tested the agent's dev server, everything works
+uzi checkpoint brave-tiger "feat: add user profile editor"
+```
+
+**Before making major changes:**
+```bash
+# Save current progress before pivoting approach
+uzi checkpoint funny-elephant "feat: add basic search functionality"
+uzi broadcast "Now optimize search using ElasticSearch"
+```
+
+**When combining multiple agents' work:**
+```bash
+# Checkpoint different features from different agents
+uzi checkpoint agent-1 "feat: add authentication"
+uzi checkpoint agent-2 "feat: add user profiles"
+uzi checkpoint agent-3 "test: add integration tests"
+```
+
+### Times to Wait
+
+**Don't checkpoint when:**
+- The agent's code doesn't compile or has errors
+- Tests are failing
+- The implementation is incomplete
+- You haven't reviewed the changes
+- The agent is still actively working
+
+<Warning>
+Checkpointing creates a commit. If the code is broken, you'll have to fix it or revert the commit. Always review before checkpointing.
+</Warning>
+
+## Advanced Scenarios
+
+### Checkpointing with Conflicts
+
+If the agent's changes conflict with your current branch:
+
+```bash
+uzi checkpoint agent-name "feat: add feature"
+```
+
+**Error:**
+```
+error: could not apply abc123... feat: add feature
+Could not apply abc123... feat: add feature
+```
+
+**Resolution:**
+```bash
+# Fix conflicts manually
+git status  # See conflicted files
+# Edit files to resolve conflicts
+git add .
+git rebase --continue
+```
+
+<Tip>
+If conflicts are complex, consider reviewing the agent's worktree directly and manually applying changes instead of checkpointing.
+</Tip>
+
+### Selective Checkpointing
+
+You can't checkpoint part of an agent's work - it's all or nothing. If you only want some changes:
+
+**Option 1: Manual cherry-pick**
+```bash
+# In the agent's worktree, find the commit hash
+cd ~/.local/share/uzi/worktrees/agent-worktree/
+git log  # Copy the commit hash you want
+
+# Back in your main repo
+cd /path/to/main/repo
+git cherry-pick abc123
+```
+
+**Option 2: Manual file copy**
+```bash
+# Copy specific files from agent worktree
+cp ~/.local/share/uzi/worktrees/agent-worktree/src/auth.js ./src/
+git add src/auth.js
+git commit -m "feat: add auth module from agent"
+```
+
+### Multiple Checkpoints
+
+You can checkpoint the same agent multiple times:
+
+```bash
+# First checkpoint
+uzi checkpoint agent-name "feat: add basic authentication"
+
+# Give more instructions
+uzi broadcast "Now add OAuth support"
+
+# Wait for agent to implement
+
+# Second checkpoint
+uzi checkpoint agent-name "feat: add OAuth authentication"
+```
+
+Each checkpoint creates a new commit with the incremental changes.
+
+### Checkpointing Across Agents
+
+Checkpoint different features from different agents in sequence:
+
+```bash
+# Agent 1 built the backend
+uzi checkpoint backend-agent "feat(api): add user management endpoints"
+
+# Agent 2 built the frontend
+uzi checkpoint frontend-agent "feat(ui): add user management UI"
+
+# Agent 3 wrote tests
+uzi checkpoint test-agent "test: add user management integration tests"
+
+# Now all features are in your main branch
+git log --oneline -3
+```
+
+## Troubleshooting
+
+### "no active session found for agent"
+
+**Error:**
+```bash
+$ uzi checkpoint funny-elephant "feat: add feature"
+no active session found for agent: funny-elephant
+```
+
+**Cause:** The agent doesn't exist or has already been killed.
+
+**Solution:**
+```bash
+# List active agents
+uzi ls
+
+# Use the exact agent name from the list
+uzi checkpoint <exact-agent-name> "commit message"
+```
+
+### "agent branch does not exist"
+
+**Error:**
+```bash
+agent branch does not exist: agent-branch-name
+```
+
+**Cause:** The agent's Git branch was deleted manually.
+
+**Solution:** The agent state is corrupted. Kill and recreate:
+```bash
+uzi kill agent-name
+# Start a new agent
+```
+
+### "error rebasing agent changes"
+
+**Error:**
+```bash
+error rebasing agent changes: exit status 1
+```
+
+**Cause:** Git conflicts between agent changes and current branch.
+
+**Solution:**
+```bash
+# Check rebase status
+git status
+
+# Resolve conflicts in indicated files
+vim conflicted-file.js
+
+# Continue rebase
+git add .
+git rebase --continue
+
+# Or abort and try manual merge
+git rebase --abort
+```
+
+### No Changes to Commit
+
+**Warning:**
+```bash
+No unstaged changes to commit, rebasing
+```
+
+**Cause:** The agent hasn't made any changes yet, or changes were already committed.
+
+**Solution:** This is not an error. The checkpoint will still rebase any existing commits from the agent's branch.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Review before checkpointing">
+    Always review the agent's work before merging it into your branch:
+
+    ```bash
+    # Check the diff size
+    uzi ls
+
+    # Test the functionality
+    open http://localhost:3000
+
+    # Review the code
+    cd ~/.local/share/uzi/worktrees/agent-worktree/
+    git diff HEAD~3
+    ```
+  </Accordion>
+
+  <Accordion title="Use descriptive commit messages">
+    Your checkpoint commit message becomes part of your project history:
+
+    **Good:**
+    ```bash
+    uzi checkpoint agent "feat(auth): add JWT authentication with refresh tokens"
+    ```
+
+    **Bad:**
+    ```bash
+    uzi checkpoint agent "updates"
+    ```
+  </Accordion>
+
+  <Accordion title="Checkpoint incrementally">
+    Don't wait for everything to be perfect. Checkpoint working increments:
+
+    ```bash
+    # After basic feature works
+    uzi checkpoint agent "feat: add basic user search"
+
+    # After optimization
+    uzi checkpoint agent "perf: optimize search with indexing"
+
+    # After polish
+    uzi checkpoint agent "feat: add search filters and pagination"
+    ```
+  </Accordion>
+
+  <Accordion title="Test after checkpointing">
+    Always verify that checkpointed code works in your main environment:
+
+    ```bash
+    uzi checkpoint agent "feat: add feature"
+
+    # Test immediately
+    npm install  # In case dependencies changed
+    npm test
+    npm run dev
+    ```
+
+    Your main environment may differ from the agent's worktree.
+  </Accordion>
+
+  <Accordion title="Keep agents after checkpointing for iterations">
+    You don't have to kill agents after checkpointing:
+
+    ```bash
+    # Checkpoint current work
+    uzi checkpoint agent "feat: add basic dashboard"
+
+    # Keep iterating with the same agent
+    uzi broadcast "Add charts and graphs to the dashboard"
+
+    # Checkpoint again later
+    uzi checkpoint agent "feat: add dashboard visualizations"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Managing Agents" icon="users" href="/guides/managing-agents">
+    Learn how to monitor and control multiple agents
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/guides/troubleshooting">
+    Solve common issues with Uzi and Git workflows
+  </Card>
+</CardGroup>

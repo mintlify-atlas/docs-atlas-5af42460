@@ -1,0 +1,656 @@
+---
+title: Troubleshooting
+description: Solutions to common issues with Uzi, tmux, Git worktrees, and agent management
+---
+
+This guide helps you diagnose and fix common problems when using Uzi.
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Tmux not found" icon="terminal">
+    **Error:**
+    ```bash
+    $ uzi prompt --agents claude:1 "test"
+    Error creating tmux session: command not found: tmux
+    ```
+
+    **Cause:** Tmux is not installed on your system.
+
+    **Solution:**
+
+    **On macOS:**
+    ```bash
+    brew install tmux
+    ```
+
+    **On Ubuntu/Debian:**
+    ```bash
+    sudo apt-get update
+    sudo apt-get install tmux
+    ```
+
+    **On Fedora:**
+    ```bash
+    sudo dnf install tmux
+    ```
+
+    **Verify installation:**
+    ```bash
+    tmux -V
+    # Should output: tmux 3.x
+    ```
+
+    <Tip>
+    Uzi requires tmux for managing agent sessions. It's a prerequisite for all operations.
+    </Tip>
+  </Accordion>
+
+  <Accordion title="Git worktree errors" icon="code-branch">
+    **Error:**
+    ```bash
+    Error creating git worktree: fatal: 'path' already exists
+    ```
+
+    **Cause:** A worktree with the same name already exists from a previous session.
+
+    **Solution:**
+
+    ```bash
+    # List all worktrees
+    git worktree list
+
+    # Remove the problematic worktree
+    git worktree remove ~/.local/share/uzi/worktrees/agent-worktree-name --force
+
+    # Clean up the branch
+    git branch -D branch-name
+
+    # Or use uzi reset to clean everything
+    uzi reset
+    ```
+
+    **Prevention:**
+    Always use `uzi kill` to properly clean up agents instead of manually removing files.
+
+    ---
+
+    **Error:**
+    ```bash
+    fatal: 'branch-name' is already checked out at 'path'
+    ```
+
+    **Cause:** The branch is already used by another worktree.
+
+    **Solution:**
+    ```bash
+    # List all worktrees
+    git worktree list
+
+    # Remove the existing worktree
+    git worktree remove path/to/worktree
+
+    # Or kill the agent using it
+    uzi kill agent-name
+    ```
+  </Accordion>
+
+  <Accordion title="Port conflicts" icon="plug">
+    **Error:**
+    ```bash
+    Error finding available port: no available ports in range 3000-3010
+    ```
+
+    **Cause:** All ports in your configured range are in use.
+
+    **Solution 1: Expand port range**
+    
+    Edit `uzi.yaml`:
+    ```yaml
+    devCommand: npm run dev -- --port $PORT
+    portRange: 3000-3020  # Increase upper limit
+    ```
+
+    **Solution 2: Kill unused agents**
+    ```bash
+    # See which ports are in use
+    uzi ls
+
+    # Kill agents you're not using
+    uzi kill agent-name
+    # Or kill all
+    uzi kill all
+    ```
+
+    **Solution 3: Find and kill processes using ports**
+    ```bash
+    # On macOS/Linux
+    lsof -ti:3000 | xargs kill -9
+    lsof -ti:3001 | xargs kill -9
+    # etc.
+    ```
+
+    ---
+
+    **Error:**
+    ```bash
+    Error: listen EADDRINUSE: address already in use :::3000
+    ```
+
+    **Cause:** Another process is using the port assigned to the agent.
+
+    **Solution:**
+    ```bash
+    # Find what's using the port
+    lsof -i :3000
+
+    # Kill the process
+    kill -9 <PID>
+
+    # Or kill the agent and restart it
+    uzi kill agent-name
+    ```
+  </Accordion>
+
+  <Accordion title="Agent stuck or not responding" icon="hourglass">
+    **Symptoms:**
+    - Agent shows "running" status indefinitely
+    - `uzi auto` doesn't help
+    - Agent doesn't respond to broadcast messages
+
+    **Diagnosis:**
+    ```bash
+    # Attach to the agent's session to see what's happening
+    tmux attach -t agent-myproject-a1b2c3d-agent-name
+    ```
+
+    **Solutions:**
+
+    **If the agent is waiting for input:**
+    - Manually type a response or press Enter
+    - Or send Ctrl+C to interrupt
+
+    **If the agent is truly stuck:**
+    ```bash
+    # Detach from tmux (Ctrl+B then D)
+    
+    # Kill and restart the agent
+    uzi kill agent-name
+    uzi prompt --agents claude:1 "your original prompt"
+    ```
+
+    **If the AI tool crashed:**
+    ```bash
+    # Attach to session
+    tmux attach -t agent-name
+    
+    # Restart the AI tool manually
+    claude "continue working"
+    
+    # Detach (Ctrl+B then D)
+    ```
+  </Accordion>
+
+  <Accordion title="No active sessions found" icon="search">
+    **Error:**
+    ```bash
+    $ uzi ls
+    No active sessions found
+    ```
+
+    **Cause 1:** You haven't started any agents yet.
+
+    **Solution:**
+    ```bash
+    uzi prompt --agents claude:1 "your task"
+    ```
+
+    ---
+
+    **Cause 2:** You're in a different Git repository.
+
+    **Solution:**
+    Uzi shows agents for the current repository only. Make sure you're in the correct directory:
+    ```bash
+    # Check current directory
+    pwd
+    
+    # Navigate to your project
+    cd /path/to/your/project
+    
+    # Try again
+    uzi ls
+    ```
+
+    ---
+
+    **Cause 3:** Agent sessions were killed or crashed.
+
+    **Solution:**
+    ```bash
+    # Check if tmux sessions exist
+    tmux ls
+    
+    # If sessions exist but uzi doesn't see them, state may be corrupted
+    uzi reset
+    
+    # Restart agents
+    uzi prompt --agents claude:1 "your task"
+    ```
+  </Accordion>
+
+  <Accordion title="Config file not found" icon="file">
+    **Warning:**
+    ```bash
+    Error loading config, using default values: open uzi.yaml: no such file or directory
+    Dev command not set in config, skipping dev server startup.
+    Port range not set in config, skipping dev server startup.
+    ```
+
+    **Cause:** No `uzi.yaml` file exists in your project root.
+
+    **Solution:**
+    Create `uzi.yaml` in your project root:
+
+    ```yaml
+    devCommand: npm install && npm run dev -- --port $PORT
+    portRange: 3000-3010
+    ```
+
+    **Example configs for different frameworks:**
+
+    **Next.js:**
+    ```yaml
+    devCommand: npm install && npm run dev -- --port $PORT
+    portRange: 3000-3010
+    ```
+
+    **Vite:**
+    ```yaml
+    devCommand: npm install && npm run dev -- --port $PORT
+    portRange: 5173-5183
+    ```
+
+    **Django:**
+    ```yaml
+    devCommand: pip install -r requirements.txt && python manage.py runserver 0.0.0.0:$PORT
+    portRange: 8000-8010
+    ```
+
+    **Rails:**
+    ```yaml
+    devCommand: bundle install && rails server -p $PORT
+    portRange: 3000-3010
+    ```
+
+    <Tip>
+    If you don't need dev servers, you can run Uzi without a config file. Agents will still work, just without automatic development server setup.
+    </Tip>
+  </Accordion>
+
+  <Accordion title="Cannot checkpoint agent" icon="bookmark">
+    **Error:**
+    ```bash
+    $ uzi checkpoint agent-name "commit message"
+    no active session found for agent: agent-name
+    ```
+
+    **Cause:** Agent name is incorrect or agent was already killed.
+
+    **Solution:**
+    ```bash
+    # List active agents
+    uzi ls
+    
+    # Use the exact agent name from AGENT column
+    uzi checkpoint funny-elephant "commit message"
+    ```
+
+    ---
+
+    **Error:**
+    ```bash
+    agent branch does not exist: branch-name
+    ```
+
+    **Cause:** Agent's Git branch was manually deleted.
+
+    **Solution:**
+    The agent state is corrupted. You'll need to manually extract changes:
+    ```bash
+    # Navigate to agent's worktree
+    cd ~/.local/share/uzi/worktrees/agent-worktree/
+    
+    # Create a patch of all changes
+    git diff HEAD > ~/agent-changes.patch
+    
+    # Go back to main repo
+    cd /path/to/main/repo
+    
+    # Apply the patch
+    git apply ~/agent-changes.patch
+    
+    # Commit manually
+    git add .
+    git commit -m "feat: changes from agent"
+    
+    # Kill the broken agent
+    uzi kill agent-name
+    ```
+
+    ---
+
+    **Error:**
+    ```bash
+    error rebasing agent changes: exit status 1
+    ```
+
+    **Cause:** Git conflicts between agent changes and your current branch.
+
+    **Solution:**
+    ```bash
+    # Check status
+    git status
+    
+    # Resolve conflicts in marked files
+    vim conflicted-file.js
+    
+    # Stage resolved files
+    git add .
+    
+    # Continue rebase
+    git rebase --continue
+    
+    # Or abort if too complex
+    git rebase --abort
+    ```
+  </Accordion>
+
+  <Accordion title="Dev server not starting" icon="server">
+    **Symptoms:**
+    - `uzi ls` shows agents but no ADDR column values
+    - Dev servers aren't accessible
+
+    **Cause 1:** No devCommand in uzi.yaml
+
+    **Solution:**
+    Add devCommand to `uzi.yaml`:
+    ```yaml
+    devCommand: npm install && npm run dev -- --port $PORT
+    portRange: 3000-3010
+    ```
+
+    ---
+
+    **Cause 2:** Dev command failing in worktree
+
+    **Diagnosis:**
+    ```bash
+    # Attach to agent's session
+    tmux attach -t agent-name
+    
+    # Switch to uzi-dev window
+    # Press Ctrl+B then 1
+    
+    # Check for errors in the dev server output
+    ```
+
+    **Common issues:**
+    - Missing dependencies (add `npm install` to devCommand)
+    - Port variable not substituted (make sure to use `$PORT` in command)
+    - Command path issues (use absolute paths or cd to correct directory)
+
+    ---
+
+    **Cause 3:** Port conflicts
+
+    See "Port conflicts" accordion above.
+  </Accordion>
+
+  <Accordion title="uzi auto not working" icon="robot">
+    **Symptoms:**
+    - Agents pause waiting for confirmation
+    - `uzi auto` is running but not pressing Enter
+
+    **Diagnosis:**
+    ```bash
+    # Check if uzi auto is actually running
+    ps aux | grep "uzi auto"
+    ```
+
+    **Solutions:**
+
+    **Make sure uzi auto is running:**
+    ```bash
+    # Start it in a separate terminal
+    uzi auto
+    ```
+
+    **Check agent pane content:**
+    ```bash
+    # Attach to agent
+    tmux attach -t agent-name
+    
+    # uzi auto looks for specific keywords
+    # If the AI tool uses different prompts, it won't recognize them
+    ```
+
+    **Manual alternative:**
+    If uzi auto doesn't work for your AI tool, you can manually confirm:
+    ```bash
+    # Attach to agent
+    tmux attach -t agent-name
+    
+    # Press Enter when prompted
+    # Detach (Ctrl+B then D)
+    ```
+  </Accordion>
+
+  <Accordion title="Broadcast not working" icon="broadcast-tower">
+    **Symptoms:**
+    - `uzi broadcast` runs but agents don't receive the message
+    - Agents don't respond to broadcast
+
+    **Diagnosis:**
+    ```bash
+    # Check if agents are active
+    uzi ls
+    
+    # Verify tmux sessions exist
+    tmux ls
+    ```
+
+    **Solutions:**
+
+    **If no active sessions:**
+    ```bash
+    # Start agents first
+    uzi prompt --agents claude:1 "task"
+    
+    # Then broadcast
+    uzi broadcast "message"
+    ```
+
+    **If sessions exist but broadcast doesn't work:**
+    ```bash
+    # Attach manually to verify
+    tmux attach -t agent-name
+    
+    # Check that you're on the agent window (window 0)
+    # Broadcast sends to :agent window specifically
+    ```
+
+    **Manual alternative:**
+    ```bash
+    # Send message to each agent manually
+    tmux send-keys -t agent-name:agent "your message" Enter
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Reset Everything
+
+If things are really broken, you can reset all Uzi data:
+
+```bash
+uzi reset
+```
+
+**This will remove:**
+- All agent worktrees from `~/.local/share/uzi/worktrees/`
+- All state files from `~/.local/share/uzi/`
+- Configuration data
+
+<Warning>
+**This does not:**
+- Kill active tmux sessions (do `uzi kill all` first)
+- Remove Git branches (clean those up manually if needed)
+- Delete your uzi.yaml file
+
+This operation cannot be undone. Checkpoint any valuable agent work before resetting.
+</Warning>
+
+**Clean reset workflow:**
+```bash
+# 1. Kill all agents
+uzi kill all
+
+# 2. Reset Uzi data
+uzi reset
+
+# 3. Clean up any leftover tmux sessions
+tmux kill-server  # CAUTION: Kills ALL tmux sessions
+
+# 4. Clean up worktree branches
+git worktree list
+git worktree prune
+git branch | grep 'agent-' | xargs git branch -D
+
+# 5. Start fresh
+uzi prompt --agents claude:1 "new task"
+```
+
+## Debugging Tips
+
+### Check Uzi State
+
+Inspect the internal state file:
+
+```bash
+cat ~/.local/share/uzi/state.json | jq
+```
+
+This shows all tracked agents, their branches, worktrees, and ports.
+
+### Check Git Worktrees
+
+List all worktrees:
+
+```bash
+git worktree list
+```
+
+Expected output:
+```
+/path/to/main/repo              a1b2c3d [main]
+/home/user/.local/share/uzi/worktrees/funny-elephant-myproject-a1b2c3d-1234567890-0  a1b2c3d [funny-elephant-myproject-a1b2c3d-1234567890-0]
+```
+
+Prune removed worktrees:
+```bash
+git worktree prune
+```
+
+### Check Tmux Sessions
+
+List all tmux sessions:
+
+```bash
+tmux ls
+```
+
+Kill a specific session:
+```bash
+tmux kill-session -t session-name
+```
+
+Kill all tmux sessions:
+```bash
+tmux kill-server
+```
+
+<Warning>
+`tmux kill-server` will kill ALL tmux sessions on your system, not just Uzi agents.
+</Warning>
+
+### Check Port Usage
+
+See what's using ports in your range:
+
+```bash
+# macOS/Linux
+lsof -i :3000
+lsof -i :3001
+lsof -i :3002
+
+# Or check a range (requires netstat)
+netstat -an | grep LISTEN | grep -E '(3000|3001|3002|3003)'
+```
+
+### Enable Debug Logging
+
+Uzi uses debug logging. Set the log level:
+
+```bash
+# Set debug level (if Uzi supports it - check actual implementation)
+export UZI_LOG_LEVEL=debug
+uzi prompt --agents claude:1 "test"
+```
+
+Check the source code for actual logging configuration.
+
+### Inspect Agent Worktree
+
+Manually explore what an agent has done:
+
+```bash
+# Navigate to agent's worktree
+cd ~/.local/share/uzi/worktrees/funny-elephant-myproject-a1b2c3d-1234567890-0
+
+# Check git status
+git status
+
+# See commits
+git log --oneline
+
+# See changes
+git diff HEAD~3
+
+# Run commands in the worktree
+npm test
+npm run build
+```
+
+## Getting Help
+
+If you encounter issues not covered here:
+
+1. **Check the logs**: Look at tmux session output and Git error messages
+2. **Check state files**: Inspect `~/.local/share/uzi/state.json`
+3. **Try a clean reset**: Use `uzi reset` to start fresh
+4. **Report bugs**: Open an issue on [GitHub](https://github.com/devflowinc/uzi) with:
+   - Uzi version (`uzi version` if available)
+   - Complete error message
+   - Steps to reproduce
+   - Your `uzi.yaml` configuration
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Basic Workflow" icon="rocket" href="/guides/basic-workflow">
+    Review the complete Uzi workflow from start to finish
+  </Card>
+  <Card title="Managing Agents" icon="users" href="/guides/managing-agents">
+    Learn advanced agent management techniques
+  </Card>
+</CardGroup>

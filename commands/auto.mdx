@@ -1,0 +1,216 @@
+---
+title: auto
+description: Automatically manage agent sessions and handle user prompts
+---
+
+## Synopsis
+
+```bash
+uzi auto
+```
+
+Alias: `a`
+
+## Description
+
+The `auto` command monitors all active agent sessions in the current repository and automatically handles interactive prompts that would normally require manual intervention. This enables true hands-free operation when running multiple agents.
+
+`auto` watches tmux pane content for specific prompts and automatically presses Enter when detected, allowing agents to continue working without manual input.
+
+## What It Does
+
+The auto-watcher:
+1. **Discovers active sessions** for the current repository every 5 seconds
+2. **Monitors each session** for output changes and specific prompts
+3. **Auto-responds** to detected prompts by pressing Enter
+4. **Tracks sessions** as they start and stop
+
+## Detected Prompts
+
+The auto command automatically handles these types of prompts:
+
+<AccordionGroup>
+  <Accordion title="Trust Prompts">
+    ```
+    Do you trust the files in this folder?
+    ```
+    Common when opening a workspace for the first time.
+  </Accordion>
+  
+  <Accordion title="Continuation Prompts">
+    ```
+    Press Enter to continue
+    Continue? (Y/n)
+    Do you want to proceed?
+    Proceed? (y/N)
+    Do you want to...
+    ```
+    Standard prompts asking for user confirmation.
+  </Accordion>
+  
+  <Accordion title="Command Approval">
+    ```
+    Allow command...
+    ```
+    Permission requests to execute commands (excludes "Thinking" to avoid false positives).
+  </Accordion>
+</AccordionGroup>
+
+## Monitoring Behavior
+
+### Session Detection
+
+- Refreshes active sessions every **5 seconds**
+- Automatically starts watching new sessions
+- Stops watching sessions that are no longer active
+- Scoped to the current git repository only
+
+### Prompt Detection
+
+- Checks pane content every **500ms**
+- Uses SHA-256 hashing to detect content changes
+- Tracks update history per session
+- Logs auto-actions for visibility
+
+## Usage
+
+### Start the Auto-Watcher
+
+```bash
+# Start monitoring all agents in current repo
+uzi auto
+```
+
+The command runs continuously until interrupted with `Ctrl+C`.
+
+### Typical Workflow
+
+```bash
+# Terminal 1: Launch multiple agents
+uzi prompt --agents=claude:3 "implement user authentication"
+
+# Terminal 2: Start auto-watcher
+uzi auto
+
+# Now agents can run hands-free, with auto handling all prompts
+```
+
+## How It Works
+
+<Steps>
+  <Step title="Initialization">
+    Creates state manager and sets up signal handlers for graceful shutdown
+  </Step>
+  
+  <Step title="Session Refresh">
+    Every 5 seconds, queries state for active sessions in the current repository
+  </Step>
+  
+  <Step title="Watch Loop">
+    For each active session, spawns a goroutine that:
+    - Captures tmux pane content every 500ms
+    - Compares content hash with previous capture
+    - Checks for known prompt patterns
+    - Sends Enter key if prompt detected
+  </Step>
+  
+  <Step title="Cleanup">
+    On receiving SIGINT/SIGTERM, stops all watchers and exits gracefully
+  </Step>
+</Steps>
+
+## State Tracking
+
+Each monitored session maintains:
+
+<ResponseField name="sessionName" type="string">
+  The tmux session identifier
+</ResponseField>
+
+<ResponseField name="prevOutputHash" type="byte[]">
+  SHA-256 hash of previous pane content for change detection
+</ResponseField>
+
+<ResponseField name="lastUpdated" type="time.Time">
+  Timestamp of last detected change
+</ResponseField>
+
+<ResponseField name="updateCount" type="int">
+  Number of times content has changed
+</ResponseField>
+
+<ResponseField name="noUpdateCount" type="int">
+  Consecutive checks without changes
+</ResponseField>
+
+## Examples
+
+### Basic Monitoring
+
+```bash
+# Start auto-watcher in background
+uzi auto &
+
+# Launch agents - auto will handle their prompts
+uzi prompt "build a REST API"
+```
+
+### With Multiple Agents
+
+```bash
+# Terminal 1: Start watcher first
+uzi auto
+
+# Terminal 2: Launch 5 agents in parallel
+uzi prompt --agents=random:5 "optimize database queries"
+
+# All 5 agents run hands-free with auto handling prompts
+```
+
+## Logs
+
+The auto command produces debug logs when:
+- Starting to watch a new session
+- Detecting content updates
+- Detecting and handling prompts
+- Encountering errors
+
+Example output:
+```
+INFO  Starting Agent Watcher
+INFO  Starting to watch session session="agent-myproject-a3f2b1c-clever-curie"
+DEBUG Session updated session="agent-myproject-a3f2b1c-clever-curie"
+INFO  Auto-pressing Enter for prompt session="agent-myproject-a3f2b1c-clever-curie"
+INFO  Successfully sent Enter session="agent-myproject-a3f2b1c-clever-curie"
+```
+
+## Graceful Shutdown
+
+The auto-watcher handles these signals:
+- `SIGINT` (Ctrl+C)
+- `SIGTERM`
+
+On receiving either signal:
+1. Logs shutdown message
+2. Closes quit channel to stop all watchers
+3. Exits cleanly
+
+## Related Commands
+
+- [`prompt`](/commands/prompt) - Launch agents that auto will monitor
+- [`ls`](/commands/ls) - View which sessions are being monitored
+- [`kill`](/commands/kill) - Stop agents (auto will stop watching them)
+
+## Notes
+
+<Note>
+  The auto command only monitors agents in the **current git repository**. Agents from other repositories are not affected.
+</Note>
+
+<Tip>
+  Run `uzi auto` in a dedicated terminal or tmux window so you can monitor its logs while working in other terminals.
+</Tip>
+
+<Warning>
+  The auto-watcher sends Enter to any detected prompt. Make sure this behavior is appropriate for your workflow before enabling it.
+</Warning>

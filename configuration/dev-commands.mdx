@@ -1,0 +1,191 @@
+---
+title: "Development Command Configuration"
+description: "Configure how Uzi starts development servers for each agent"
+---
+
+## Overview
+
+The `devCommand` field in `uzi.yaml` defines the command Uzi executes to start a development server for each agent. This command runs in a dedicated tmux window called `uzi-dev` within each agent's session.
+
+## The $PORT Placeholder
+
+Uzi replaces `$PORT` in your dev command with an available port from the configured `portRange`.
+
+```yaml uzi.yaml
+devCommand: npm run dev -- --port $PORT
+portRange: 3000-3010
+```
+
+When Uzi creates an agent session, it:
+
+1. Finds an available port (e.g., 3005) from the range
+2. Replaces `$PORT` with the actual port number
+3. Executes: `npm run dev -- --port 3005`
+
+<Note>
+  The `$PORT` replacement happens once per agent session. Each agent gets a unique port from the configured range.
+</Note>
+
+## Why Include Installation Steps
+
+Each agent runs in an **isolated Git worktree** with its own copy of the codebase. Dependencies are not shared between agents.
+
+<Warning>
+  Always include installation commands (`npm install`, `pip install`, `yarn`, etc.) in your `devCommand`. Without them, the dev server will fail to start in the fresh worktree.
+</Warning>
+
+### Good Examples
+
+```yaml
+# Next.js - includes npm install
+devCommand: npm install && npm run dev -- --port $PORT
+
+# Vite - includes npm install
+devCommand: npm install && npm run dev -- --port $PORT
+
+# Django - includes pip install
+devCommand: pip install -r requirements.txt && python manage.py runserver 0.0.0.0:$PORT
+
+# Yarn monorepo - includes yarn install
+devCommand: cd astrobits && yarn && yarn dev --port $PORT
+```
+
+### Bad Examples
+
+```yaml
+# Missing npm install - will fail in fresh worktree
+devCommand: npm run dev -- --port $PORT
+
+# Missing pip install - dependencies won't be available
+devCommand: python manage.py runserver 0.0.0.0:$PORT
+```
+
+## Command Execution Flow
+
+When you run `uzi prompt --agents claude:2 "Add login page"`:
+
+1. **Uzi loads configuration** from `uzi.yaml` (pkg/config/config.go:22)
+2. **Creates Git worktree** for the agent in `~/.local/share/uzi/worktrees/`
+3. **Creates tmux session** with two windows:
+   - `agent` - where the AI agent runs
+   - `uzi-dev` - where the dev server runs
+4. **Finds available port** from the `portRange` (cmd/prompt/prompt.go:271)
+5. **Replaces $PORT** in devCommand with the actual port (cmd/prompt/prompt.go:278)
+6. **Executes dev command** in the `uzi-dev` window (cmd/prompt/prompt.go:289)
+
+## Framework-Specific Examples
+
+<CodeGroup>
+
+```yaml Next.js
+devCommand: npm install && npm run dev -- --port $PORT
+portRange: 3000-3010
+```
+
+```yaml Vite + React
+devCommand: npm install && npm run dev -- --port $PORT
+portRange: 5173-5183
+```
+
+```yaml SvelteKit
+devCommand: npm install && npm run dev -- --port $PORT
+portRange: 5173-5183
+```
+
+```yaml Django
+devCommand: pip install -r requirements.txt && python manage.py runserver 0.0.0.0:$PORT
+portRange: 8000-8010
+```
+
+```yaml Flask
+devCommand: pip install -r requirements.txt && flask run --port $PORT
+portRange: 5000-5010
+```
+
+```yaml Rails
+devCommand: bundle install && rails server -p $PORT
+portRange: 3000-3010
+```
+
+```yaml Yarn Workspace
+devCommand: cd packages/web && yarn && yarn dev --port $PORT
+portRange: 3000-3010
+```
+
+</CodeGroup>
+
+## Best Practices
+
+### 1. Always Include Dependencies
+
+```yaml
+# Good - includes install step
+devCommand: npm install && npm run dev -- --port $PORT
+
+# Bad - missing install step
+devCommand: npm run dev -- --port $PORT
+```
+
+### 2. Use && for Sequential Commands
+
+Chain commands with `&&` to ensure each step succeeds before continuing:
+
+```yaml
+devCommand: npm install && npm run build:deps && npm run dev -- --port $PORT
+```
+
+### 3. Navigate to Subdirectories if Needed
+
+```yaml
+# For monorepos or nested projects
+devCommand: cd api && npm install && npm run dev -- --port $PORT
+```
+
+### 4. Bind to All Interfaces for Remote Access
+
+```yaml
+# Django - bind to 0.0.0.0 instead of localhost
+devCommand: pip install -r requirements.txt && python manage.py runserver 0.0.0.0:$PORT
+```
+
+## What Happens Without devCommand
+
+If `devCommand` is not configured (or `portRange` is missing), Uzi:
+
+- Creates the Git worktree normally
+- Creates the tmux session with only the `agent` window
+- Skips dev server startup
+- Proceeds with sending the prompt to the agent
+
+This is useful for:
+- Projects that don't need a dev server
+- Backend services that don't have a web interface
+- CLI tools or libraries
+
+## Troubleshooting
+
+### Dev Server Fails to Start
+
+1. **Check the `uzi-dev` tmux window** for error messages:
+   ```bash
+   tmux attach -t agent-projectname-abc123-agentname
+   # Switch to uzi-dev window with Ctrl+B, then 1
+   ```
+
+2. **Verify installation commands** are included in devCommand
+
+3. **Test the command manually** in a fresh worktree:
+   ```bash
+   cd ~/.local/share/uzi/worktrees/agentname-projectname-abc123-timestamp
+   # Run your devCommand with a port number
+   npm install && npm run dev -- --port 3000
+   ```
+
+### Port Already in Use
+
+If all ports in the range are taken, Uzi logs an error and skips that agent. See [Port Management](/configuration/port-management) for details.
+
+## Related
+
+- [uzi.yaml Configuration](/configuration/uzi-yaml) - Full configuration reference
+- [Port Management](/configuration/port-management) - How ports are allocated

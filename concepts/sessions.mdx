@@ -1,0 +1,494 @@
+---
+title: Sessions
+description: Learn how Uzi uses Tmux sessions to manage agent environments and development servers
+---
+
+## What are Sessions?
+
+In Uzi, a **session** is a persistent Tmux environment where an AI agent operates. Each session provides:
+
+- **Isolation**: Dedicated workspace for one agent
+- **Persistence**: Continues running even if you disconnect
+- **Multi-window support**: Separate panes for agent and development server
+- **Easy access**: Attach to any session to observe or interact
+
+<Info>
+Tmux (Terminal Multiplexer) allows programs to run in the background and persist across terminal disconnections. Uzi leverages this to keep agents running independently.
+</Info>
+
+## Session Structure
+
+Each Uzi session follows a standardized structure:
+
+```
+Session: agent-myproject-a1b2c3d-sarah
+├── Window 0: agent
+│   └── AI agent runs here, executing commands and making changes
+└── Window 1: uzi-dev (optional)
+    └── Development server (if configured)
+```
+
+### Session Creation
+
+When you run `uzi prompt`, Uzi creates a new Tmux session:
+
+```go
+// From prompt.go:215-220
+cmd = fmt.Sprintf("tmux new-session -d -s %s -c %s", sessionName, worktreePath)
+cmdExec = exec.CommandContext(ctx, "sh", "-c", cmd)
+if err := cmdExec.Run(); err != nil {
+    log.Error("Error creating tmux session", "command", cmd, "error", err)
+}
+```
+
+This creates a detached session (`-d`) with the specified name and working directory.
+
+## Session Naming Convention
+
+Session names follow a strict format that encodes important metadata:
+
+```
+agent-{projectDir}-{gitHash}-{agentName}
+```
+
+### Components
+
+| Component | Description | Example |
+|-----------|-------------|----------|
+| `agent` | Fixed prefix | `agent` |
+| `projectDir` | Repository name | `myapp` |
+| `gitHash` | Short Git commit hash | `a1b2c3d` |
+| `agentName` | Random agent name | `sarah` |
+
+**Example**: `agent-myapp-a1b2c3d-sarah`
+
+### Name Generation
+
+The session name is constructed from Git metadata:
+
+```go
+// From prompt.go:166-188
+// Get git hash
+gitHashCmd := exec.CommandContext(ctx, "git", "rev-parse", "--short", "HEAD")
+gitHashOutput, err := gitHashCmd.Output()
+gitHash := strings.TrimSpace(string(gitHashOutput))
+
+// Get repository name
+gitRemoteCmd := exec.CommandContext(ctx, "git", "remote", "get-url", "origin")
+gitRemoteOutput, err := gitRemoteCmd.Output()
+remoteURL := strings.TrimSpace(string(gitRemoteOutput))
+repoName := filepath.Base(remoteURL)
+projectDir := strings.TrimSuffix(repoName, ".git")
+
+// Create session name
+sessionName := fmt.Sprintf("agent-%s-%s-%s", projectDir, gitHash, randomAgentName)
+```
+
+<Note>
+The session name uniquely identifies the agent and its context. This naming scheme prevents collisions when running multiple Uzi agents across different projects.
+</Note>
+
+## Window 0: Agent Pane
+
+The first window (named "agent") is where the AI agent operates.
+
+### Window Renaming
+
+After creating the session, Uzi renames the default window:
+
+```go
+// From prompt.go:222-228
+renameCmd := fmt.Sprintf("tmux rename-window -t %s:0 agent", sessionName)
+renameExec := exec.CommandContext(ctx, "sh", "-c", renameCmd)
+if err := renameExec.Run(); err != nil {
+    log.Error("Error renaming tmux window", "command", renameCmd, "error", err)
+}
+```
+
+### Sending Commands
+
+Uzi sends the agent command to this window:
+
+```go
+// From prompt.go:305-310
+tmuxCmd := fmt.Sprintf("tmux send-keys -t %s:agent '%s \"%s\"' C-m", sessionName, commandToUse)
+tmuxCmdExec := exec.CommandContext(ctx, "sh", "-c", fmt.Sprintf(tmuxCmd, promptText))
+if err := tmuxCmdExec.Run(); err != nil {
+    log.Error("Error sending keys to tmux", "command", tmuxCmd, "error", err)
+}
+```
+
+This sends: `{commandToUse} "{promptText}"` followed by Enter (`C-m`).
+
+<Tip>
+You can attach to the agent pane to watch it work: `tmux attach -t agent-myapp-a1b2c3d-sarah:agent`
+</Tip>
+
+## Window 1: Development Server (uzi-dev)
+
+If you've configured a development command, Uzi creates a second window for the dev server.
+
+### Configuration
+
+Development server settings are configured in `~/.uzi/config.json`:
+
+```json
+{
+  "dev_command": "npm run dev -- --port $PORT",
+  "port_range": "3000-4000"
+}
+```
+
+- **dev_command**: Command to start your dev server (use `$PORT` placeholder)
+- **port_range**: Range of ports to allocate (format: `start-end`)
+
+### Port Allocation
+
+Uzi automatically finds an available port in the configured range:
+
+```go
+// From prompt.go:271-275
+selectedPort, err = findAvailablePort(startPort, endPort, assignedPorts)
+if err != nil {
+    log.Error("Error finding available port", "error", err)
+}
+```
+
+The `findAvailablePort` function:
+
+```go
+// From prompt.go:89-109
+func findAvailablePort(startPort, endPort int, assignedPorts []int) (int, error) {
+    for port := startPort; port <= endPort; port++ {
+        // Check if already assigned
+        alreadyAssigned := false
+        for _, assignedPort := range assignedPorts {
+            if port == assignedPort {
+                alreadyAssigned = true
+                break
+            }
+        }
+        if alreadyAssigned {
+            continue
+        }
+        
+        // Check if actually available
+        if isPortAvailable(port) {
+            return port, nil
+        }
+    }
+    return 0, fmt.Errorf("no available ports in range %d-%d", startPort, endPort)
+}
+```
+
+### Window Creation
+
+The uzi-dev window is created in the same session:
+
+```go
+// From prompt.go:280-286
+newWindowCmd := fmt.Sprintf("tmux new-window -t %s -n uzi-dev -c %s", sessionName, worktreePath)
+newWindowExec := exec.CommandContext(ctx, "sh", "-c", newWindowCmd)
+if err := newWindowExec.Run(); err != nil {
+    log.Error("Error creating new tmux window for dev server", "command", newWindowCmd, "error", err)
+}
+```
+
+### Starting the Dev Server
+
+The dev command is sent to the uzi-dev window:
+
+```go
+// From prompt.go:277-293
+devCmdTemplate := *cfg.DevCommand
+devCmd := strings.Replace(devCmdTemplate, "$PORT", strconv.Itoa(selectedPort), 1)
+
+sendDevCmd := fmt.Sprintf("tmux send-keys -t %s:uzi-dev '%s' C-m", sessionName, devCmd)
+sendDevCmdExec := exec.CommandContext(ctx, "sh", "-c", sendDevCmd)
+if err := sendDevCmdExec.Run(); err != nil {
+    log.Error("Error sending dev command to tmux", "command", sendDevCmd, "error", err)
+}
+```
+
+**Example**: If `dev_command` is `npm run dev -- --port $PORT` and `selectedPort` is `3001`, this runs:
+
+```bash
+npm run dev -- --port 3001
+```
+
+<Info>
+The development server runs independently of the agent, allowing the AI to interact with a live preview of the application.
+</Info>
+
+## Session Monitoring
+
+### Listing Active Sessions
+
+Use `uzi ls` to see all active sessions:
+
+```bash
+$ uzi ls
+AGENT   MODEL   STATUS    DIFF        ADDR                    PROMPT
+sarah   claude  running   +45/-12     http://localhost:3000   Implement auth
+john    codex   ready     +23/-8      http://localhost:3001   Fix parser bug
+```
+
+The status is determined by inspecting the agent pane:
+
+```go
+// From ls.go:94-104
+func getAgentStatus(sessionName string) string {
+    content, err := getPaneContent(sessionName)
+    if err != nil {
+        return "unknown"
+    }
+    
+    if strings.Contains(content, "esc to interrupt") || strings.Contains(content, "Thinking") {
+        return "running"
+    }
+    return "ready"
+}
+```
+
+### Pane Content Capture
+
+Uzi captures the visible content of the agent pane:
+
+```go
+// From ls.go:85-92
+func getPaneContent(sessionName string) (string, error) {
+    cmd := exec.Command("tmux", "capture-pane", "-t", sessionName+":agent", "-p")
+    output, err := cmd.Output()
+    if err != nil {
+        return "", err
+    }
+    return string(output), nil
+}
+```
+
+### Watch Mode
+
+Monitor sessions in real-time:
+
+```bash
+uzi ls -w
+```
+
+This refreshes the display every second:
+
+```go
+// From ls.go:223-262
+if *watchMode {
+    ticker := time.NewTicker(1 * time.Second)
+    defer ticker.Stop()
+    
+    for {
+        select {
+        case <-ctx.Done():
+            return ctx.Err()
+        case <-ticker.C:
+            clearScreen()
+            activeSessions, err := stateManager.GetActiveSessionsForRepo()
+            // ... print sessions
+        }
+    }
+}
+```
+
+<Tip>
+Press `Ctrl+C` to exit watch mode.
+</Tip>
+
+## Session State
+
+Session metadata is stored in `~/.local/share/uzi/state.json`:
+
+```json
+{
+  "agent-myapp-a1b2c3d-sarah": {
+    "git_repo": "git@github.com:user/myapp.git",
+    "branch_from": "main",
+    "branch_name": "sarah-myapp-a1b2c3d-1234",
+    "prompt": "Implement authentication",
+    "worktree_path": "/home/user/.local/share/uzi/worktrees/sarah-myapp-a1b2c3d-1234",
+    "port": 3000,
+    "model": "claude",
+    "created_at": "2024-03-15T10:30:00Z",
+    "updated_at": "2024-03-15T10:45:00Z"
+  }
+}
+```
+
+### Active Session Detection
+
+Uzi checks if a session is active using Tmux:
+
+```go
+// From state.go:74-77
+func (sm *StateManager) isActiveInTmux(sessionName string) bool {
+    cmd := exec.Command("tmux", "has-session", "-t", sessionName)
+    return cmd.Run() == nil
+}
+```
+
+### Repository Filtering
+
+The `GetActiveSessionsForRepo` method filters sessions by Git repository:
+
+```go
+// From state.go:79-106
+func (sm *StateManager) GetActiveSessionsForRepo() ([]string, error) {
+    // Load state
+    states := make(map[string]AgentState)
+    // ... load from state.json
+    
+    currentRepo := sm.getGitRepo()
+    if currentRepo == "" {
+        return []string{}, nil
+    }
+    
+    var activeSessions []string
+    for sessionName, state := range states {
+        if state.GitRepo == currentRepo && sm.isActiveInTmux(sessionName) {
+            activeSessions = append(activeSessions, sessionName)
+        }
+    }
+    
+    return activeSessions, nil
+}
+```
+
+This ensures `uzi ls` only shows sessions for the current repository.
+
+## Interacting with Sessions
+
+### Attach to a Session
+
+Connect to a session to observe or interact:
+
+```bash
+# Attach to the entire session
+tmux attach -t agent-myapp-a1b2c3d-sarah
+
+# Attach to specific window
+tmux attach -t agent-myapp-a1b2c3d-sarah:agent
+tmux attach -t agent-myapp-a1b2c3d-sarah:uzi-dev
+```
+
+### Detach from a Session
+
+While attached, press `Ctrl+B` then `D` to detach without killing the session.
+
+### Send Keys to a Session
+
+Send commands programmatically:
+
+```bash
+tmux send-keys -t agent-myapp-a1b2c3d-sarah:agent "git status" C-m
+```
+
+## Session Cleanup
+
+When you kill an agent, Uzi removes its session:
+
+```go
+// From kill.go:33-43
+checkSession := exec.CommandContext(ctx, "tmux", "has-session", "-t", sessionName)
+if err := checkSession.Run(); err == nil {
+    // Session exists, kill it
+    killCmd := exec.CommandContext(ctx, "tmux", "kill-session", "-t", sessionName)
+    if err := killCmd.Run(); err != nil {
+        log.Error("Error killing tmux session", "session", sessionName, "error", err)
+    }
+}
+```
+
+This also removes:
+- The Git worktree
+- The Git branch
+- The state entry
+- The worktree metadata directory
+
+<Warning>
+Killing a session is permanent. Make sure to checkpoint any work you want to keep before running `uzi kill`.
+</Warning>
+
+## Best Practices
+
+### Use Descriptive Configuration
+
+Configure your dev server with the `$PORT` placeholder:
+
+```json
+{
+  "dev_command": "npm run dev -- --port $PORT",
+  "port_range": "3000-4000"
+}
+```
+
+### Monitor Sessions Regularly
+
+Check session status frequently:
+
+```bash
+# Quick check
+uzi ls
+
+# Real-time monitoring
+uzi ls -w
+```
+
+### Attach to Observe Agent Work
+
+When debugging or learning, attach to sessions:
+
+```bash
+tmux attach -t agent-myapp-a1b2c3d-sarah:agent
+```
+
+### Clean Up Completed Sessions
+
+Remove finished agents to free resources:
+
+```bash
+uzi kill sarah
+
+# Or remove all
+uzi kill all
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Session not found">
+    If `uzi ls` doesn't show your session:
+    - Check if the session is still active: `tmux ls`
+    - Verify you're in the correct Git repository
+    - Inspect `~/.local/share/uzi/state.json` for the session entry
+  </Accordion>
+  
+  <Accordion title="Port already in use">
+    If the dev server fails to start:
+    - Increase your `port_range` in config
+    - Kill unused agents: `uzi kill all`
+    - Manually check for processes using ports: `lsof -i :3000`
+  </Accordion>
+  
+  <Accordion title="Can't attach to session">
+    If `tmux attach` fails:
+    - Ensure Tmux is installed: `which tmux`
+    - Check the session name is correct: `tmux ls`
+    - Try `tmux attach -t {sessionName}` without the window suffix
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Worktrees" icon="code-branch" href="/concepts/worktrees">
+    Learn about Git worktree isolation
+  </Card>
+  <Card title="Kill Command" icon="skull" href="/commands/kill">
+    Master session cleanup and deletion
+  </Card>
+</CardGroup>

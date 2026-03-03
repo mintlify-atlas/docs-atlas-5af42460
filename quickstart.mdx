@@ -1,80 +1,328 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Run your first parallel AI coding agents with Uzi in minutes
 ---
 
-## Get started in three steps
+## Overview
 
-Get your documentation site running locally and make your first customization.
+This guide walks you through running multiple AI agents in parallel to solve a coding task. You'll learn how to create agents, monitor their progress, and merge the best solution back into your codebase.
 
-### Step 1: Set up your local environment
+<Note>
+Make sure you've completed the [Installation](/installation) steps before continuing.
+</Note>
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+## Your first multi-agent workflow
+
+<Steps>
+  <Step title="Navigate to your project">
+    Open a terminal and navigate to your Git repository:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    ```bash
+    cd ~/projects/my-app
+    ```
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    Verify you're in a Git repository:
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```bash
+    git status
+    ```
+  </Step>
+  
+  <Step title="Create agents with a prompt">
+    Start multiple agents with a task. This example runs 3 Claude agents and 2 Codex agents:
+    
+    ```bash
+    uzi prompt --agents claude:3,codex:2 "Create a reusable Button component with variants for primary, secondary, and outline styles. Include TypeScript types and add examples to the main page."
+    ```
+    
+    <Accordion title="What happens when you run this command?">
+    For each agent, Uzi:
+    1. Creates a new Git worktree in `~/.local/share/uzi/worktrees/`
+    2. Creates a new Git branch (e.g., `agent-myapp-abc123-fluffy-elephant`)
+    3. Spawns a tmux session for the agent
+    4. Finds an available port from your configured range
+    5. Starts your dev server (if configured in `uzi.yaml`)
+    6. Launches the AI agent with your prompt
+    </Accordion>
+    
+    You'll see output like:
+    ```
+    fluffy-elephant: claude: Create a reusable Button component...
+    happy-giraffe: claude: Create a reusable Button component...
+    silly-penguin: claude: Create a reusable Button component...
+    brave-tiger: codex: Create a reusable Button component...
+    clever-dolphin: codex: Create a reusable Button component...
+    ```
+  </Step>
+  
+  <Step title="Enable auto-confirmation">
+    Run `uzi auto` to automatically press Enter for tool confirmations and trust prompts:
+    
+    ```bash
+    uzi auto
+    ```
+    
+    This command monitors all active agents and automatically:
+    - Confirms "Do you trust the files in this folder?" prompts
+    - Presses Enter for "Allow command" prompts
+    - Handles "Continue? (Y/n)" confirmations
+    
+    <Tip>
+    Leave this running in a separate terminal window while your agents work.
+    </Tip>
+  </Step>
+  
+  <Step title="Monitor agent progress">
+    In another terminal, watch your agents' progress in real-time:
+    
+    ```bash
+    uzi ls -w
+    ```
+    
+    The `-w` flag enables watch mode, refreshing every second. You'll see:
+    
+    ```
+    AGENT             MODEL   STATUS     DIFF      ADDR                      PROMPT
+    fluffy-elephant   claude  running    +142/-8   http://localhost:3001     Create a reusable Button component...
+    happy-giraffe     claude  ready      +89/-3    http://localhost:3002     Create a reusable Button component...
+    silly-penguin     claude  running    +156/-12  http://localhost:3003     Create a reusable Button component...
+    brave-tiger       codex   ready      +67/-5    http://localhost:3004     Create a reusable Button component...
+    clever-dolphin    codex   running    +201/-15  http://localhost:3005     Create a reusable Button component...
+    ```
+    
+    <ResponseField name="AGENT" type="string">
+      The randomly generated agent name (e.g., `fluffy-elephant`)
+    </ResponseField>
+    
+    <ResponseField name="MODEL" type="string">
+      The AI tool being used (e.g., `claude`, `codex`)
+    </ResponseField>
+    
+    <ResponseField name="STATUS" type="string">
+      Current status:
+      - `ready` (green): Agent is idle or waiting for input
+      - `running` (orange): Agent is actively thinking or executing
+    </ResponseField>
+    
+    <ResponseField name="DIFF" type="string">
+      Code changes: `+insertions/-deletions`
+    </ResponseField>
+    
+    <ResponseField name="ADDR" type="string">
+      Development server URL (if configured)
+    </ResponseField>
+    
+    <ResponseField name="PROMPT" type="string">
+      The task given to the agent (truncated)
+    </ResponseField>
+    
+    Press `Ctrl+C` to exit watch mode.
+  </Step>
+  
+  <Step title="Review agent work">
+    Visit each agent's development server to see their implementation:
+    
+    ```bash
+    # Open in your browser
+    open http://localhost:3001  # fluffy-elephant
+    open http://localhost:3002  # happy-giraffe
+    # etc.
+    ```
+    
+    Or attach to an agent's tmux session to see what they're doing:
+    
+    ```bash
+    tmux attach -t agent-myapp-abc123-fluffy-elephant
+    ```
+    
+    Press `Ctrl+B` then `D` to detach without closing the session.
+  </Step>
+  
+  <Step title="Checkpoint the best solution">
+    Once you've found an agent whose solution you like, merge it back to your main branch:
+    
+    ```bash
+    uzi checkpoint fluffy-elephant "feat: add Button component with variants"
+    ```
+    
+    This command:
+    1. Stages all changes in the agent's worktree
+    2. Creates a commit with your message
+    3. Rebases the agent's branch onto your current branch
+    4. Merges the changes into your working directory
+    
+    <Warning>
+    Make sure your current branch is clean before checkpointing. Commit or stash any uncommitted changes first.
+    </Warning>
+  </Step>
+  
+  <Step title="Clean up agents">
+    After checkpointing, clean up the agents:
+    
+    ```bash
+    # Kill a specific agent
+    uzi kill fluffy-elephant
+    
+    # Or kill all agents at once
+    uzi kill all
+    ```
+    
+    This removes tmux sessions and cleans up Git worktrees.
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Advanced usage
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+### Use random agent names
 
-### Step 3: Go live
+If you don't care about specific tools, use random agent names:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+```bash
+uzi prompt --agents random:5 "Fix all TypeScript errors in the codebase"
+```
+
+This creates 5 agents with random names, each using their name as the command.
+
+### Send additional instructions
+
+Broadcast a message to all running agents:
+
+```bash
+uzi broadcast "Make sure to add input validation and error handling"
+```
+
+This sends the message to every active agent's tmux session.
+
+### Run commands across all agents
+
+Execute a command in all agent sessions:
+
+```bash
+# Run tests in all agents
+uzi run "npm test"
+
+# Check git status in all agents
+uzi run "git status"
+
+# Run and auto-delete the window
+uzi run --delete "npm run lint"
+```
+
+The `--delete` flag removes the tmux window after the command completes.
+
+### List agents without watch mode
+
+Get a one-time snapshot of agent status:
+
+```bash
+uzi ls
+```
+
+Use aliases for faster commands:
+
+```bash
+uzi l    # alias for ls
+uzi p    # alias for prompt
+uzi a    # alias for auto
+uzi k    # alias for kill
+uzi c    # alias for checkpoint
+uzi b    # alias for broadcast
+uzi r    # alias for run
+```
+
+## Real-world example
+
+Here's a complete workflow for adding a new feature:
+
+```bash
+# 1. Start agents with a complex task
+uzi prompt --agents claude:2,aider:2 "Refactor the authentication system to use OAuth2. Add support for Google and GitHub providers. Include migration scripts and update the API documentation."
+
+# 2. Auto-confirm prompts (in separate terminal)
+uzi auto
+
+# 3. Watch progress (in another terminal)
+uzi ls -w
+
+# 4. After reviewing their work, checkpoint the best solution
+uzi checkpoint happy-giraffe "feat: add OAuth2 authentication with Google and GitHub"
+
+# 5. Clean up
+uzi kill all
+
+# 6. Push to remote
+git push origin main
+```
+
+## Troubleshooting
+
+### Agents not responding
+
+If agents appear stuck:
+
+1. Attach to the agent's tmux session to see what's happening:
+   ```bash
+   tmux attach -t agent-myapp-abc123-agent-name
+   ```
+
+2. Check if `uzi auto` is running in another terminal
+
+3. Manually press Enter in the agent's session if needed
+
+### Port conflicts
+
+If you see port errors:
+
+1. Check your `uzi.yaml` port range is large enough
+2. Kill any processes using ports in your range:
+   ```bash
+   lsof -ti:3000 | xargs kill -9
+   ```
+
+### No changes to checkpoint
+
+If checkpoint shows no changes:
+
+1. Verify the agent made changes:
+   ```bash
+   uzi ls
+   ```
+   Look for non-zero values in the DIFF column
+
+2. Check the agent's worktree directly:
+   ```bash
+   cd ~/.local/share/uzi/worktrees/agent-name-*
+   git status
+   ```
+
+### Reset everything
+
+If things get messy, reset all Uzi data:
+
+```bash
+uzi reset
+```
+
+<Warning>
+This deletes all worktrees, sessions, and state data in `~/.local/share/uzi/`. Use with caution.
+</Warning>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Commands reference" icon="terminal" href="/commands">
+    Learn about all available Uzi commands and options
+  </Card>
+  
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Advanced configuration options for uzi.yaml
+  </Card>
+  
+  <Card title="Best practices" icon="lightbulb" href="/best-practices">
+    Tips for getting the most out of parallel agents
+  </Card>
+  
+  <Card title="Workflows" icon="diagram-project" href="/workflows">
+    Common workflows and use cases for Uzi
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

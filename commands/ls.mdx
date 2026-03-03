@@ -1,0 +1,214 @@
+---
+title: ls
+description: List active agent sessions with status and statistics
+---
+
+## Synopsis
+
+```bash
+uzi ls [OPTIONS]
+```
+
+Alias: `l`
+
+## Description
+
+The `ls` command displays all active agent sessions for the current repository in a formatted table, showing each agent's status, code changes, dev server address, and original prompt.
+
+## Options
+
+<ParamField path="-a, --all" type="boolean" default="false">
+  Show all sessions including inactive ones (currently not fully implemented).
+</ParamField>
+
+<ParamField path="-w, --watch" type="boolean" default="false">
+  Watch mode - automatically refresh the output every second. Press Ctrl+C to exit.
+</ParamField>
+
+<ParamField path="--config" type="string" default="~/.config/uzi/config.json">
+  Path to the configuration file.
+</ParamField>
+
+## Output Format
+
+The command displays a table with these columns:
+
+<ResponseField name="AGENT" type="string">
+  The agent's unique name extracted from the session identifier.
+</ResponseField>
+
+<ResponseField name="MODEL" type="string">
+  The AI model being used (e.g., `claude`, `codex`, `gpt4`). Shows `unknown` for legacy sessions.
+</ResponseField>
+
+<ResponseField name="STATUS" type="string">
+  Current agent status:
+  - **ready** (green) - Agent is idle, waiting for input
+  - **running** (yellow) - Agent is actively processing
+  - **unknown** - Status cannot be determined
+</ResponseField>
+
+<ResponseField name="DIFF" type="string">
+  Code change statistics in format `+insertions/-deletions` with color coding:
+  - Green for additions (`+N`)
+  - Red for deletions (`-N`)
+</ResponseField>
+
+<ResponseField name="ADDR" type="string">
+  Dev server address if running (e.g., `http://localhost:3000`). Empty if no dev server configured.
+</ResponseField>
+
+<ResponseField name="PROMPT" type="string">
+  The original prompt text that was sent to the agent.
+</ResponseField>
+
+## Examples
+
+### Basic Listing
+
+```bash
+uzi ls
+```
+
+Output:
+```
+AGENT              MODEL    STATUS     DIFF        ADDR                    PROMPT
+thoughtful-tesla   claude   running    +42/-8      http://localhost:3001   implement user auth
+clever-curie       codex    ready      +0/-0       http://localhost:3002   fix login bug
+```
+
+### Watch Mode
+
+```bash
+uzi ls -w
+```
+
+Refreshes every second, clearing the screen and showing updated statistics. Useful for monitoring active agents in real-time.
+
+### Show All Sessions
+
+```bash
+uzi ls -a
+```
+
+Includes inactive sessions (feature currently matches active-only behavior).
+
+## Status Detection
+
+Agent status is determined by analyzing the tmux pane content:
+
+<CodeGroup>
+```bash Running Indicators
+# Status is "running" if pane contains:
+esc to interrupt
+Thinking
+```
+
+```bash Ready Indicators  
+# Status is "ready" if neither running indicator is present
+```
+</CodeGroup>
+
+## Diff Statistics
+
+The DIFF column shows uncommitted changes in the agent's worktree:
+
+1. Stages all changes with `git add -A .`
+2. Runs `git diff --cached --shortstat HEAD`
+3. Parses insertions and deletions from output
+4. Resets staging area with `git reset HEAD`
+
+Example outputs:
+- `+0/-0` - No changes
+- `+15/-3` - 15 lines added, 3 deleted
+- `+127/-45` - 127 lines added, 45 deleted
+
+## Sorting
+
+Sessions are sorted by **most recently updated first**, based on the `UpdatedAt` timestamp in the state file.
+
+## Session Filtering
+
+Only sessions belonging to the current git repository are shown. This is determined by:
+1. Getting the current repository's remote URL
+2. Extracting the project name
+3. Matching against session state entries
+
+## Watch Mode Behavior
+
+When using `-w` flag:
+- Clears screen before each refresh
+- Updates every 1 second
+- Shows "No active sessions found" if all agents have terminated
+- Continues until interrupted with Ctrl+C
+- Handles context cancellation gracefully
+
+## Examples in Different Scenarios
+
+### No Active Sessions
+
+```bash
+$ uzi ls
+No active sessions found
+```
+
+### Single Agent
+
+```bash
+$ uzi ls
+AGENT            MODEL    STATUS     DIFF      ADDR                    PROMPT
+wise-wozniak     claude   running    +8/-2     http://localhost:3000   add dark mode
+```
+
+### Multiple Agents, No Dev Server
+
+```bash
+$ uzi ls
+AGENT              MODEL    STATUS    DIFF       ADDR  PROMPT
+thoughtful-tesla   claude   ready     +15/-0           refactor auth module
+brave-bohr         codex    running   +42/-12          optimize queries
+```
+
+### With Watch Mode
+
+```bash
+$ uzi ls -w
+# Screen refreshes every second
+AGENT              MODEL    STATUS     DIFF        ADDR                    PROMPT
+thoughtful-tesla   claude   running    +42/-8      http://localhost:3001   implement feature X
+clever-curie       codex    running    +23/-5      http://localhost:3002   fix bug Y
+# Stats update in real-time
+```
+
+## Understanding the Output
+
+<Accordion title="Agent Names">
+  Agent names are auto-generated using a pattern like `thoughtful-tesla` or `clever-curie`. These are extracted from the full session name which follows the pattern `agent-{project}-{hash}-{agent-name}`.
+</Accordion>
+
+<Accordion title="Color Coding">
+  - **Status**: Green for ready, Yellow for running
+  - **Diff**: Green for additions (+), Red for deletions (-)
+  - All colors use ANSI escape codes and work in most modern terminals
+</Accordion>
+
+<Accordion title="Model Names">
+  The MODEL column shows which AI model the agent is using. This information is stored when the agent is created via the `prompt` command. Legacy sessions created before model tracking may show `unknown`.
+</Accordion>
+
+## Related Commands
+
+- [`prompt`](/commands/prompt) - Create agents that will appear in `ls` output
+- [`auto`](/commands/auto) - Monitor agents shown in `ls`
+- [`kill`](/commands/kill) - Remove agents from `ls` output
+- [`checkpoint`](/commands/checkpoint) - Merge changes shown in DIFF column
+
+## Notes
+
+<Tip>
+  Use watch mode (`-w`) when running multiple agents to get real-time visibility into their progress and code changes.
+</Tip>
+
+<Note>
+  The DIFF statistics show **uncommitted** changes only. Once an agent commits its work, the diff will reset to +0/-0 until new changes are made.
+</Note>

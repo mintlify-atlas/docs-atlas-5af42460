@@ -1,0 +1,221 @@
+---
+title: Installation
+description: Install Uzi and configure your development environment
+---
+
+## Install Uzi
+
+<Steps>
+  <Step title="Install with Go">
+    Install Uzi using the Go package manager:
+    
+    ```bash
+    go install github.com/devflowinc/uzi@latest
+    ```
+    
+    This downloads and compiles the latest version of Uzi from the source repository.
+  </Step>
+  
+  <Step title="Add GOBIN to your PATH">
+    Make sure your `GOBIN` directory is in your PATH so you can run `uzi` from anywhere.
+    
+    Add this to your shell profile (`~/.bashrc`, `~/.zshrc`, or equivalent):
+    
+    ```bash
+    export PATH="$PATH:$HOME/go/bin"
+    ```
+    
+    Then reload your shell configuration:
+    
+    ```bash
+    source ~/.bashrc  # or ~/.zshrc
+    ```
+    
+    <Note>
+    The default `GOBIN` location is `$HOME/go/bin`. If you've customized your Go installation, adjust the path accordingly.
+    </Note>
+  </Step>
+  
+  <Step title="Verify installation">
+    Confirm Uzi is installed correctly:
+    
+    ```bash
+    uzi --help
+    ```
+    
+    You should see the Uzi command-line interface with available commands.
+  </Step>
+  
+  <Step title="Verify prerequisites">
+    Make sure all required dependencies are installed:
+    
+    ```bash
+    # Check Git
+    git --version
+    
+    # Check Tmux
+    tmux -V
+    
+    # Check your AI tool (example with claude)
+    claude --version
+    ```
+    
+    <Warning>
+    If any of these commands fail, install the missing dependency before proceeding. See the [Introduction](/introduction#prerequisites) for installation instructions.
+    </Warning>
+  </Step>
+</Steps>
+
+## Configure your project
+
+After installing Uzi, configure it for your project by creating a `uzi.yaml` file.
+
+### Create uzi.yaml
+
+In your project root directory, create a `uzi.yaml` file:
+
+```yaml uzi.yaml
+devCommand: npm install && npm run dev -- --port $PORT
+portRange: 3000-3010
+```
+
+### Configuration options
+
+<ParamField path="devCommand" type="string" required>
+  The command to start your development server. Use `$PORT` as a placeholder for the port number that Uzi will assign to each agent.
+  
+  **Examples:**
+  
+  <CodeGroup>
+  ```yaml Next.js
+  devCommand: npm install && npm run dev -- --port $PORT
+  ```
+  
+  ```yaml Vite
+  devCommand: npm install && npm run dev -- --port $PORT
+  ```
+  
+  ```yaml Django
+  devCommand: pip install -r requirements.txt && python manage.py runserver 0.0.0.0:$PORT
+  ```
+  
+  ```yaml Rails
+  devCommand: bundle install && rails server -p $PORT
+  ```
+  
+  ```yaml Go
+  devCommand: go run main.go -port $PORT
+  ```
+  </CodeGroup>
+  
+  <Note>
+  Include all setup steps (like `npm install`, `pip install`, etc.) since each agent runs in an isolated Git worktree with its own dependencies.
+  </Note>
+</ParamField>
+
+<ParamField path="portRange" type="string" required>
+  The range of ports Uzi can use for development servers in the format `start-end`.
+  
+  **Examples:**
+  - `3000-3010` - Allows up to 11 agents (ports 3000-3010)
+  - `8000-8099` - Allows up to 100 agents (ports 8000-8099)
+  - `4000-4004` - Allows up to 5 agents (ports 4000-4004)
+  
+  <Tip>
+  Make sure the port range is large enough for the number of agents you plan to run simultaneously.
+  </Tip>
+</ParamField>
+
+### Optional: Skip dev server setup
+
+If your project doesn't need development servers (e.g., for backend-only work), you can omit the `uzi.yaml` file or leave fields empty:
+
+```yaml uzi.yaml
+# Minimal config - no dev servers
+devCommand:
+portRange:
+```
+
+Uzi will still create worktrees and tmux sessions but won't start development servers.
+
+## Directory structure
+
+After running Uzi, it creates the following directory structure:
+
+```
+~/.local/share/uzi/
+├── worktrees/           # Git worktrees for each agent
+│   ├── agent-name-1/
+│   ├── agent-name-2/
+│   └── ...
+└── state.json          # Agent state and session information
+```
+
+<Note>
+Uzi stores all data in `~/.local/share/uzi/` to keep your project directory clean. You can reset everything with `uzi reset`.
+</Note>
+
+## Troubleshooting
+
+### Command not found: uzi
+
+If you get a "command not found" error:
+
+1. Verify `GOBIN` is in your PATH:
+   ```bash
+   echo $PATH | grep go/bin
+   ```
+
+2. Check if Uzi binary exists:
+   ```bash
+   ls -la $HOME/go/bin/uzi
+   ```
+
+3. If the binary exists but the command fails, manually add to PATH:
+   ```bash
+   export PATH="$PATH:$HOME/go/bin"
+   ```
+
+### Tmux not found
+
+Install tmux using your package manager:
+
+<CodeGroup>
+```bash macOS
+brew install tmux
+```
+
+```bash Ubuntu/Debian
+sudo apt update && sudo apt install tmux
+```
+
+```bash RHEL/CentOS
+sudo yum install tmux
+```
+</CodeGroup>
+
+### Git worktree errors
+
+If you encounter Git worktree errors:
+
+1. Make sure you're in a Git repository:
+   ```bash
+   git status
+   ```
+
+2. Ensure you have committed your changes:
+   ```bash
+   git add .
+   git commit -m "Save work before using Uzi"
+   ```
+
+3. Clean up old worktrees if needed:
+   ```bash
+   uzi reset
+   ```
+
+## Next steps
+
+<Card title="Quickstart" icon="rocket" href="/quickstart">
+  Learn how to run your first parallel agents with Uzi
+</Card>

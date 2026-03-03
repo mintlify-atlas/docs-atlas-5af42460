@@ -1,0 +1,107 @@
+---
+title: "uzi.yaml Configuration File"
+description: "Configure Uzi's development server automation and port management"
+---
+
+## Overview
+
+The `uzi.yaml` file is the central configuration file for Uzi, placed in your project root directory. It controls how Uzi starts development servers for each agent and manages port allocation.
+
+<Note>
+  Both configuration fields are optional. If omitted, Uzi will create agent sessions without starting development servers.
+</Note>
+
+## File Location
+
+The configuration file must be named `uzi.yaml` and placed in the root of your project directory.
+
+```
+your-project/
+├── uzi.yaml          # Configuration file
+├── src/
+├── package.json
+└── ...
+```
+
+## Configuration Fields
+
+<ParamField path="devCommand" type="string" optional>
+  The command to start your development server. Use `$PORT` as a placeholder that Uzi will replace with an available port number.
+  
+  **Important**: Include all necessary setup steps (like `npm install`, `pip install`, etc.) since each agent runs in an isolated Git worktree with its own dependencies.
+</ParamField>
+
+<ParamField path="portRange" type="string" optional>
+  The range of ports Uzi can allocate for development servers, in the format `start-end`.
+  
+  Example: `3000-3010` allows Uzi to use ports from 3000 to 3010 (inclusive).
+</ParamField>
+
+## Configuration Examples
+
+<CodeGroup>
+
+```yaml Next.js
+devCommand: npm install && npm run dev -- --port $PORT
+portRange: 3000-3010
+```
+
+```yaml Vite
+devCommand: npm install && npm run dev -- --port $PORT
+portRange: 3000-3010
+```
+
+```yaml Django
+devCommand: pip install -r requirements.txt && python manage.py runserver 0.0.0.0:$PORT
+portRange: 8000-8010
+```
+
+```yaml Yarn Monorepo
+devCommand: cd astrobits && yarn && yarn dev --port $PORT
+portRange: 3000-3010
+```
+
+```yaml Minimal (No Dev Server)
+# Leave file empty or omit entirely
+# Agents will run without development servers
+```
+
+</CodeGroup>
+
+## How Configuration is Loaded
+
+Uzi loads the configuration when you run `uzi prompt`:
+
+1. Looks for `uzi.yaml` in the project root (default location)
+2. Can be overridden with `--config` flag: `uzi prompt --config path/to/config.yaml`
+3. If the file is missing or has errors, Uzi logs a warning and proceeds without dev server setup
+
+<Note>
+  Missing configuration file is not an error. Uzi will simply skip development server startup and create agent sessions normally.
+</Note>
+
+## Optional vs Required Fields
+
+Both `devCommand` and `portRange` are **optional**:
+
+- If **both** are set: Uzi starts a development server for each agent on a unique port
+- If **either is missing**: Uzi skips dev server setup and only creates the agent worktree and tmux session
+- If **portRange is invalid**: Uzi logs a warning and skips dev server for that agent
+
+<Warning>
+  Both `devCommand` and `portRange` must be configured together. Setting only one will result in dev servers not starting.
+</Warning>
+
+## Validation
+
+Uzi validates the configuration at runtime:
+
+- **Port range format**: Must be in format `start-end` (e.g., `3000-3010`)
+- **Port range values**: Start port must be less than or equal to end port
+- **Port availability**: Uzi checks each port in the range to find an available one
+- **Invalid configuration**: Logged as warnings, does not stop agent creation
+
+## Related
+
+- [Dev Command Configuration](/configuration/dev-commands) - Deep dive into devCommand
+- [Port Management](/configuration/port-management) - How Uzi allocates and manages ports

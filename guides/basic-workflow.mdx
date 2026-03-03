@@ -1,0 +1,257 @@
+---
+title: Basic Workflow
+description: Complete workflow for using Uzi to manage parallel AI coding agents from start to finish
+---
+
+This guide walks through a complete Uzi workflow, from starting agents to merging their work back into your main branch.
+
+## Overview
+
+Uzi's workflow is designed around managing multiple AI coding agents working in parallel, each in their own isolated Git worktree with their own development server. Here's what a typical session looks like:
+
+<Steps>
+  <Step title="Start agents with a task">
+    Launch multiple agents with a specific prompt using the `uzi prompt` command.
+
+    ```bash
+    uzi prompt --agents claude:3,codex:2 "Implement a REST API for user management with authentication"
+    ```
+
+    **What happens:**
+    - Creates 5 agents total (3 claude, 2 codex)
+    - Each agent gets a unique Git worktree in `~/.local/share/uzi/worktrees/`
+    - Each agent gets a dedicated tmux session
+    - Each agent gets its own development server on a unique port (if configured)
+    - All agents receive the same initial prompt
+
+    **Output:**
+    ```
+    funny-elephant: claude: Implement a REST API for user management with authentication
+    wise-dolphin: claude: Implement a REST API for user management with authentication
+    brave-tiger: claude: Implement a REST API for user management with authentication
+    clever-fox: codex: Implement a REST API for user management with authentication
+    swift-hawk: codex: Implement a REST API for user management with authentication
+    ```
+  </Step>
+
+  <Step title="Run uzi auto to handle confirmations">
+    Let `uzi auto` automatically handle tool execution confirmations.
+
+    ```bash
+    uzi auto
+    ```
+
+    **What it does:**
+    - Monitors all agent tmux sessions in real-time
+    - Automatically presses Enter when agents request tool execution confirmation
+    - Handles continuation prompts
+    - Runs until you interrupt with Ctrl+C
+
+    <Tip>
+    `uzi auto` is essential for truly autonomous agent operation. Without it, agents will pause and wait for manual confirmation every time they want to execute a tool.
+    </Tip>
+  </Step>
+
+  <Step title="Monitor agent progress">
+    Watch what your agents are doing in real-time.
+
+    ```bash
+    uzi ls -w  # Watch mode - refreshes every second
+    ```
+
+    **Example output:**
+    ```
+    AGENT            MODEL   STATUS    DIFF       ADDR                     PROMPT
+    funny-elephant   claude  running   +127/-23   http://localhost:3000    Implement a REST API for user management with authentication
+    wise-dolphin     claude  ready     +89/-12    http://localhost:3001    Implement a REST API for user management with authentication
+    brave-tiger      claude  ready     +0/-0      http://localhost:3002    Implement a REST API for user management with authentication
+    clever-fox       codex   running   +234/-45   http://localhost:3003    Implement a REST API for user management with authentication
+    swift-hawk       codex   ready     +156/-31   http://localhost:3004    Implement a REST API for user management with authentication
+    ```
+
+    **Understanding the output:**
+    - **STATUS**: `ready` (idle), `running` (actively thinking/working)
+    - **DIFF**: Shows `+insertions/-deletions` compared to base branch
+    - **ADDR**: Development server URL for testing changes
+    - **PROMPT**: The initial prompt given to the agent
+
+    <Tip>
+    Use `uzi ls` without `-w` for a single snapshot, or with `-w` for continuous monitoring.
+    </Tip>
+  </Step>
+
+  <Step title="Send additional instructions">
+    Broadcast messages to all active agents at once.
+
+    ```bash
+    uzi broadcast "Make sure to add input validation and error handling"
+    ```
+
+    **What happens:**
+    - Message is sent to all active agent sessions
+    - Each agent receives it as if you typed it directly
+    - Useful for course corrections or additional requirements
+
+    **Output:**
+    ```
+    Broadcasting message to 5 agent sessions:
+
+    === agent-myproject-a1b2c3d-funny-elephant ===
+
+    === agent-myproject-a1b2c3d-wise-dolphin ===
+    ...
+    ```
+  </Step>
+
+  <Step title="Checkpoint completed work">
+    Merge an agent's changes back into your current branch.
+
+    ```bash
+    uzi checkpoint funny-elephant "feat: add user management API with authentication"
+    ```
+
+    **What happens:**
+    1. Stages all changes in the agent's worktree
+    2. Creates a commit with your message on the agent's branch
+    3. Rebases the agent's branch onto your current branch
+    4. Brings all changes into your working directory
+
+    **Output:**
+    ```
+    Checkpointing 3 commits from agent: funny-elephant
+    Successfully checkpointed changes from agent: funny-elephant
+    Successfully committed changes with message: feat: add user management API with authentication
+    ```
+
+    <Warning>
+    Checkpointing rebases the agent's branch onto your current branch. Make sure you're on the branch where you want these changes to land.
+    </Warning>
+  </Step>
+
+  <Step title="Clean up agents">
+    Remove agents when you're done with them.
+
+    ```bash
+    # Kill a specific agent
+    uzi kill funny-elephant
+
+    # Kill all agents for this repository
+    uzi kill all
+    ```
+
+    **What gets cleaned up:**
+    - Tmux session terminated
+    - Git worktree removed
+    - Git branch deleted
+    - State files cleaned from `~/.local/share/uzi/`
+
+    <Tip>
+    Kill agents after checkpointing to free up resources. Each agent consumes disk space for its worktree and a development server port.
+    </Tip>
+  </Step>
+</Steps>
+
+## Complete Example
+
+Here's a real-world example putting it all together:
+
+```bash
+# 1. Start 3 agents to build a React component library
+uzi prompt --agents claude:3 "Create a reusable Button component with variants (primary, secondary, danger) and size options"
+
+# 2. Auto-confirm tool executions in a separate terminal
+uzi auto
+
+# 3. Monitor progress in another terminal
+uzi ls -w
+
+# 4. After seeing good progress, refine requirements
+uzi broadcast "Also add loading and disabled states to the Button component"
+
+# 5. Check individual agent's work by visiting their dev servers
+# http://localhost:3000, http://localhost:3001, http://localhost:3002
+
+# 6. Checkpoint the best implementation
+uzi checkpoint clever-otter "feat: add Button component with variants and states"
+
+# 7. Clean up the other agents
+uzi kill wise-dolphin
+uzi kill brave-tiger
+
+# 8. Keep the checkpointed agent running for iterations
+uzi broadcast "Now add a Tooltip component in the same style"
+```
+
+## Best Practices
+
+### Configuration
+
+Always create a `uzi.yaml` in your project root:
+
+```yaml
+devCommand: npm install && npm run dev -- --port $PORT
+portRange: 3000-3010
+```
+
+<Tip>
+Include installation commands (`npm install`, `pip install`, etc.) in `devCommand` since each agent runs in an isolated worktree.
+</Tip>
+
+### Running Multiple Agents
+
+- **Start with 2-3 agents** for the same task to compare approaches
+- **Use different AI tools** to get diverse solutions: `--agents claude:2,codex:1,aider:1`
+- **Use random names** for variety: `--agents random:5`
+
+### Monitoring
+
+- Keep `uzi ls -w` running in a dedicated terminal
+- Check the `DIFF` column to see which agents are making progress
+- Visit agent dev servers to test their implementations
+
+### Checkpointing
+
+- **Review changes before checkpointing** by visiting the agent's dev server
+- **Use conventional commit messages**: `feat:`, `fix:`, `refactor:`, etc.
+- **Checkpoint incrementally** rather than waiting for complete features
+- **Test after checkpointing** to ensure the merged code works in your main environment
+
+### Resource Management
+
+- Kill agents you're not using: `uzi kill agent-name`
+- Run `uzi kill all` when switching tasks
+- Each agent uses disk space and a port - clean up regularly
+
+## Attaching to Sessions
+
+To manually interact with an agent's tmux session:
+
+```bash
+# List tmux sessions
+tmux ls
+
+# Attach to a specific agent
+tmux attach -t agent-myproject-a1b2c3d-funny-elephant
+
+# Navigate between windows
+# Ctrl+B then 0 - Agent window
+# Ctrl+B then 1 - Dev server window
+
+# Detach from session
+# Ctrl+B then D
+```
+
+<Warning>
+Manual intervention in tmux sessions can interfere with `uzi auto`. Detach before resuming automated operation.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Managing Agents" icon="users" href="/guides/managing-agents">
+    Learn advanced techniques for monitoring and controlling agents
+  </Card>
+  <Card title="Checkpointing" icon="bookmark" href="/guides/checkpointing">
+    Deep dive into merging agent work back to your main branch
+  </Card>
+</CardGroup>

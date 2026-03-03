@@ -1,0 +1,304 @@
+---
+title: kill
+description: Terminate agent sessions and clean up all associated resources
+---
+
+## Synopsis
+
+```bash
+uzi kill <agent-name|all>
+```
+
+Alias: `k`
+
+## Description
+
+The `kill` command terminates an agent session and cleans up all associated resources, including:
+- Tmux session
+- Git worktree
+- Git branch
+- State entries
+- Local storage directories
+
+This is a destructive operation that permanently removes the agent and its isolated environment.
+
+## Arguments
+
+<ParamField path="agent-name" type="string" required>
+  The name of the agent to terminate (e.g., `thoughtful-tesla`), or the special keyword `all` to terminate all agents in the current repository.
+</ParamField>
+
+## How It Works
+
+<Steps>
+  <Step title="Kill Tmux Session">
+    Terminates the agent's tmux session if it exists, stopping any running processes.
+  </Step>
+  
+  <Step title="Remove Git Worktree">
+    Removes the agent's isolated git worktree using `git worktree remove --force`.
+  </Step>
+  
+  <Step title="Delete Git Branch">
+    Deletes the agent's branch with `git branch -D`, removing all commits.
+  </Step>
+  
+  <Step title="Clean Local Storage">
+    Removes directories from `~/.local/share/uzi/worktrees/` and `~/.local/share/uzi/worktree/`.
+  </Step>
+  
+  <Step title="Update State">
+    Removes the agent's entry from `~/.local/share/uzi/state.json`.
+  </Step>
+</Steps>
+
+## Examples
+
+### Kill Single Agent
+
+```bash
+# First, see active agents
+uzi ls
+
+# Kill specific agent
+uzi kill thoughtful-tesla
+```
+
+Output:
+```
+Deleted agent: thoughtful-tesla
+```
+
+### Kill All Agents
+
+```bash
+# Terminate all agents in current repository
+uzi kill all
+```
+
+Output:
+```
+Deleted agent: thoughtful-tesla
+Deleted agent: clever-curie
+Deleted agent: brave-bohr
+Successfully deleted 3 agent(s)
+```
+
+### Typical Cleanup Workflow
+
+```bash
+# 1. Review agent's work
+uzi ls
+uzi run git diff --stat
+
+# 2. Checkpoint if satisfied
+uzi checkpoint thoughtful-tesla "feat: implement feature X"
+
+# 3. Kill the agent to free resources
+uzi kill thoughtful-tesla
+```
+
+## What Gets Deleted
+
+<AccordionGroup>
+  <Accordion title="Tmux Session">
+    The entire tmux session is terminated:
+    - Agent window (`:agent`)
+    - Dev server window (`:uzi-dev`) if it exists
+    - Any other windows created via `uzi run`
+    
+    Command used: `tmux kill-session -t <session-name>`
+  </Accordion>
+  
+  <Accordion title="Git Worktree">
+    The isolated working directory is removed:
+    - Location: `~/.local/share/uzi/worktrees/<worktree-name>/`
+    - All files and uncommitted changes are lost
+    
+    Command used: `git worktree remove --force <path>`
+  </Accordion>
+  
+  <Accordion title="Git Branch">
+    The agent's branch and all its commits are deleted:
+    - Uses force delete (`-D`) to remove even unmerged branches
+    - All agent commits are lost unless checkpointed first
+    
+    Command used: `git branch -D <branch-name>`
+  </Accordion>
+  
+  <Accordion title="Local Storage">
+    Uzi's internal storage directories are cleaned:
+    - `~/.local/share/uzi/worktrees/<agent-name>/`
+    - `~/.local/share/uzi/worktree/<session-name>/`
+  </Accordion>
+  
+  <Accordion title="State Entry">
+    The agent's metadata is removed from:
+    - `~/.local/share/uzi/state.json`
+    
+    This removes tracking of prompt, model, port, etc.
+  </Accordion>
+</AccordionGroup>
+
+## Kill All Behavior
+
+When using `uzi kill all`:
+
+1. Retrieves all active sessions for the current repository
+2. Extracts agent name from each session
+3. Calls kill operation for each agent
+4. Shows summary of deleted agents
+5. Continues even if individual kills fail
+
+Example with errors:
+```
+Deleted agent: thoughtful-tesla
+ERROR Error killing session session="agent-..." error="..."
+Deleted agent: brave-bohr
+Successfully deleted 2 agent(s)
+```
+
+## Error Handling
+
+<ResponseField name="Agent Not Found" type="error">
+  ```
+  no active session found for agent: unknown-agent
+  ```
+  
+  Verify the agent name with `uzi ls`.
+</ResponseField>
+
+<ResponseField name="Tmux Session Error" type="warning">
+  If the tmux session doesn't exist or can't be killed, the error is logged but cleanup continues.
+</ResponseField>
+
+<ResponseField name="Worktree Removal Failure" type="error">
+  ```
+  failed to remove git worktree: ...
+  ```
+  
+  May occur if files are locked or permissions are wrong. Manual cleanup may be needed.
+</ResponseField>
+
+<ResponseField name="Branch Deletion Failure" type="error">
+  ```  
+  failed to delete git branch: ...
+  ```
+  
+  Branch may be checked out elsewhere or protected. Check with `git branch -a`.
+</ResponseField>
+
+## Preservation Before Killing
+
+If you want to preserve the agent's work before killing:
+
+### Option 1: Checkpoint
+
+```bash
+# Merge agent's work into current branch
+uzi checkpoint thoughtful-tesla "feat: add feature"
+uzi kill thoughtful-tesla
+```
+
+### Option 2: Manual Branch Save
+
+```bash
+# Create a backup branch from agent's branch
+git branch backup-thoughtful-tesla agent-...-thoughtful-tesla
+uzi kill thoughtful-tesla
+
+# Later, review or merge the backup
+git log backup-thoughtful-tesla
+git merge backup-thoughtful-tesla
+```
+
+### Option 3: Export Diff
+
+```bash
+# Save changes as a patch
+uzi run "git diff HEAD > /tmp/agent-changes.patch"
+cp /tmp/agent-changes.patch ~/backups/
+uzi kill thoughtful-tesla
+
+# Later, apply the patch
+git apply ~/backups/agent-changes.patch
+```
+
+## When to Kill Agents
+
+<Check>
+  **Safe to kill:**
+  - Agent completed its task and changes are checkpointed
+  - Agent produced unsatisfactory results
+  - Agent is stuck or unresponsive
+  - You're done experimenting with parallel approaches
+  - You need to free system resources
+</Check>
+
+<Warning>
+  **Think twice before killing:**
+  - Agent has uncommitted changes you want to keep
+  - Agent is still actively working on a task
+  - You haven't reviewed the agent's output
+  - The work might be useful later
+</Warning>
+
+## Resource Cleanup
+
+Killing agents frees:
+- **Disk space**: Worktree directories can be large
+- **Ports**: Dev server ports become available for reuse
+- **Tmux sessions**: Reduces session clutter
+- **Git branches**: Keeps branch list clean
+
+## Comparison with Git Worktree
+
+Uzi's kill is similar to but more thorough than `git worktree remove`:
+
+| Operation | git worktree remove | uzi kill |
+|-----------|---------------------|----------|
+| Remove worktree | ✓ | ✓ |
+| Delete branch | ✗ | ✓ |
+| Kill tmux session | ✗ | ✓ |
+| Clean local storage | ✗ | ✓ |
+| Update state | ✗ | ✓ |
+
+## Recovery After Accidental Kill
+
+<Warning>
+  Once killed, agent resources are **permanently deleted**. There is no undo.
+</Warning>
+
+However, if you killed an agent accidentally:
+
+```bash
+# Check reflog for the deleted branch
+git reflog | grep <agent-branch-name>
+
+# Recreate branch from reflog
+git branch recovered-agent <commit-hash>
+
+# Review and merge if needed
+git diff recovered-agent
+```
+
+## Related Commands
+
+- [`prompt`](/commands/prompt) - Create agents that will later be killed
+- [`ls`](/commands/ls) - See which agents exist before killing
+- [`checkpoint`](/commands/checkpoint) - Preserve agent work before killing
+- [`reset`](/commands/reset) - Nuclear option to delete all Uzi data
+
+## Notes
+
+<Tip>
+  Before killing an agent, use `uzi ls` to verify the agent name and `uzi run git log --oneline` to review its work.
+</Tip>
+
+<Warning>
+  The `kill` command is **destructive and irreversible**. Always checkpoint valuable work before killing an agent.
+</Warning>
+
+<Note>
+  Use `uzi kill all` carefully, especially if you have agents working on different features. It will terminate all agents in the current repository.
+</Note>

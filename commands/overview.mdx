@@ -1,0 +1,119 @@
+---
+title: Command Reference
+description: Complete reference for all Uzi CLI commands
+---
+
+Uzi provides a suite of commands for managing AI coding agents across multiple isolated environments. Each agent runs in its own tmux session with a dedicated git worktree.
+
+## Available Commands
+
+<CardGroup cols={2}>
+  <Card title="prompt" icon="message" href="/commands/prompt">
+    Launch agents with a prompt in isolated environments
+  </Card>
+  
+  <Card title="auto" icon="robot" href="/commands/auto">
+    Automatically manage agent sessions and handle prompts
+  </Card>
+  
+  <Card title="ls" icon="list" href="/commands/ls">
+    List all active agent sessions with status
+  </Card>
+  
+  <Card title="broadcast" icon="tower-broadcast" href="/commands/broadcast">
+    Send messages to all active agents simultaneously
+  </Card>
+  
+  <Card title="run" icon="play" href="/commands/run">
+    Execute commands across all agent sessions
+  </Card>
+  
+  <Card title="checkpoint" icon="bookmark" href="/commands/checkpoint">
+    Merge agent changes back to main worktree
+  </Card>
+  
+  <Card title="kill" icon="trash" href="/commands/kill">
+    Terminate agent sessions and clean up resources
+  </Card>
+  
+  <Card title="reset" icon="rotate-left" href="/commands/reset">
+    Delete all Uzi data and start fresh
+  </Card>
+</CardGroup>
+
+## Quick Reference
+
+| Command | Alias | Description |
+|---------|-------|-------------|
+| `prompt` | `p` | Run prompt with specified agents |
+| `auto` | `a` | Auto-manage agent sessions |
+| `ls` | `l` | List active sessions |
+| `broadcast` | `b` | Send message to all agents |
+| `run` | `r` | Run command in all sessions |
+| `checkpoint` | `c` | Rebase agent changes |
+| `kill` | `k` | Delete agent session |
+| `reset` | - | Reset all Uzi data |
+
+## Common Workflows
+
+### Starting Agents
+
+```bash
+# Launch a single Claude agent
+uzi prompt "implement user authentication"
+
+# Launch multiple agents with different models
+uzi prompt --agents=claude:2,codex:1 "fix the login bug"
+```
+
+### Monitoring Progress
+
+```bash
+# List all active agents
+uzi ls
+
+# Watch mode with live updates
+uzi ls -w
+
+# Auto-manage prompts (hands-free operation)
+uzi auto
+```
+
+### Managing Changes
+
+```bash
+# Checkpoint an agent's work
+uzi checkpoint agent-name "feat: add authentication"
+
+# Terminate an agent
+uzi kill agent-name
+
+# Clean up all agents
+uzi kill all
+```
+
+## Global Concepts
+
+### Agent Sessions
+
+Each agent runs in an isolated environment consisting of:
+- **Tmux session** for terminal interaction
+- **Git worktree** for isolated file changes
+- **Git branch** for version control
+- **Dev server** (optional) on a dedicated port
+
+### Session Naming
+
+Sessions follow the pattern: `agent-{project}-{hash}-{agent-name}`
+
+Example: `agent-uzi-a3f2b1c-thoughtful-tesla`
+
+### State Management
+
+Uzi tracks all sessions in `~/.local/share/uzi/state.json` with:
+- Prompt text
+- Branch name
+- Session name
+- Worktree path
+- Model name
+- Dev server port (if configured)

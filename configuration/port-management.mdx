@@ -1,0 +1,237 @@
+---
+title: "Port Management"
+description: "How Uzi allocates and manages ports for development servers"
+---
+
+## Overview
+
+When running multiple agents in parallel, each needs its own development server on a unique port. Uzi automatically finds and assigns available ports from the configured `portRange`.
+
+## Port Range Configuration
+
+Define the port range in `uzi.yaml`:
+
+```yaml uzi.yaml
+portRange: 3000-3010
+```
+
+This allows Uzi to use ports **3000 through 3010** (inclusive) - a total of 11 ports.
+
+<Note>
+  The port range is inclusive on both ends. `3000-3010` includes both 3000 and 3010.
+</Note>
+
+## Port Allocation Strategy
+
+Uzi uses a sequential allocation strategy to find available ports:
+
+1. **Parse the port range** from `portRange` configuration (cmd/prompt/prompt.go:258)
+2. **For each agent**, call `findAvailablePort()` (cmd/prompt/prompt.go:271)
+3. **Iterate through the range** from start to end port (cmd/prompt/prompt.go:90)
+4. **Skip already assigned ports** in the current execution (cmd/prompt/prompt.go:92-100)
+5. **Check if port is available** using `isPortAvailable()` (cmd/prompt/prompt.go:104)
+6. **Return first available port** or error if none found (cmd/prompt/prompt.go:105-108)
+
+### Port Availability Check
+
+Uzi determines if a port is available by attempting to bind a TCP listener:
+
+```go
+// From cmd/prompt/prompt.go:78-86
+func isPortAvailable(port int) bool {
+    address := fmt.Sprintf(":%d", port)
+    listener, err := net.Listen("tcp", address)
+    if err != nil {
+        return false
+    }
+    listener.Close()
+    return true
+}
+```
+
+A port is considered **unavailable** if:
+- Another Uzi agent is using it
+- Another application is using it
+- It's a privileged port (< 1024) and you lack permissions
+
+## Example: Creating 3 Agents
+
+```bash
+uzi prompt --agents claude:3 "Build a todo app"
+```
+
+With `portRange: 3000-3010` configured:
+
+1. **Agent 1**: Uzi checks 3000 → available → assigns port **3000**
+2. **Agent 2**: Uzi checks 3000 → already assigned → checks 3001 → available → assigns port **3001**
+3. **Agent 3**: Uzi checks 3000 → assigned → 3001 → assigned → 3002 → available → assigns port **3002**
+
+<Note>
+  Ports are assigned sequentially as agents are created. The assignment persists for the lifetime of each agent session.
+</Note>
+
+## What Happens When Ports Run Out
+
+If you request more agents than available ports, Uzi handles it gracefully:
+
+```yaml uzi.yaml
+portRange: 3000-3002  # Only 3 ports available
+```
+
+```bash
+uzi prompt --agents claude:5 "Implement login"  # Requesting 5 agents
+```
+
+**Result**:
+- **Agents 1-3**: Successfully created with ports 3000, 3001, 3002
+- **Agent 4**: Logs error `"Error finding available port"` and **skips dev server**
+- **Agent 5**: Logs error and **skips dev server**
+
+<Warning>
+  When no ports are available, Uzi still creates the agent worktree and tmux session, but skips the development server startup. The agent can still work on code, but won't have a running dev server.
+</Warning>
+
+From the code (cmd/prompt/prompt.go:272-275):
+
+```go
+selectedPort, err = findAvailablePort(startPort, endPort, assignedPorts)
+if err != nil {
+    log.Error("Error finding available port", "error", err)
+    continue  // Skips dev server but creates agent
+}
+```
+
+## Tracked vs. External Port Usage
+
+Uzi tracks two types of port conflicts:
+
+### 1. Internal Tracking (Current Execution)
+
+Ports assigned to agents in the **current `uzi prompt` command** are tracked in memory:
+
+```go
+// From cmd/prompt/prompt.go:133, 302
+var assignedPorts []int
+// ...
+assignedPorts = append(assignedPorts, selectedPort)
+```
+
+This prevents multiple agents in the same batch from getting the same port.
+
+### 2. System-Level Availability Check
+
+Uzi also checks if ports are **actually available** on the system using `isPortAvailable()` (cmd/prompt/prompt.go:78).
+
+This catches:
+- Ports used by other Uzi sessions started separately
+- Ports used by other applications
+- Ports in TIME_WAIT state from recently closed connections
+
+## Choosing a Port Range
+
+### Recommended Ranges by Framework
+
+<CodeGroup>
+
+```yaml Next.js / React / Vue
+portRange: 3000-3010
+# Next.js default: 3000
+# Vite default: 5173
+```
+
+```yaml Vite
+portRange: 5173-5183
+# Vite's default port
+```
+
+```yaml Django / Flask
+portRange: 8000-8010
+# Django default: 8000
+# Flask default: 5000
+```
+
+```yaml Rails
+portRange: 3000-3010
+# Rails default: 3000
+```
+
+</CodeGroup>
+
+### Sizing Your Port Range
+
+Calculate how many ports you need:
+
+```
+Ports needed = Maximum concurrent agents you'll run
+```
+
+**Examples**:
+- Running up to 5 agents: `portRange: 3000-3004` (5 ports)
+- Running up to 10 agents: `portRange: 3000-3009` (10 ports)
+- Heavy parallel usage: `portRange: 3000-3050` (51 ports)
+
+<Note>
+  Err on the side of a larger range. There's no downside to defining more ports than you need.
+</Note>
+
+### Avoiding Conflicts
+
+Avoid port ranges that conflict with common services:
+
+- **3306**: MySQL
+- **5432**: PostgreSQL
+- **6379**: Redis
+- **8080**: Common HTTP alternate
+- **9200**: Elasticsearch
+
+## Invalid Port Range Handling
+
+Uzi validates the port range format and logs warnings for invalid configurations:
+
+### Invalid Format
+
+```yaml
+portRange: 3000,3010  # Wrong: uses comma instead of dash
+```
+
+**Result**: `"Invalid port range format in config"` warning (cmd/prompt/prompt.go:260)
+
+### Invalid Values
+
+```yaml
+portRange: 3010-3000  # Wrong: end < start
+```
+
+**Result**: `"Invalid port range in config"` warning (cmd/prompt/prompt.go:267)
+
+### Missing Port Range
+
+If `portRange` is not configured:
+
+```yaml
+devCommand: npm run dev -- --port $PORT
+# portRange: not set
+```
+
+**Result**: `"Port range not set in config, skipping dev server startup."` (cmd/prompt/prompt.go:126)
+
+## Port Visibility in Agent Status
+
+View assigned ports with `uzi ls`:
+
+```bash
+uzi ls
+```
+
+```
+AGENT    MODEL  STATUS    DIFF  ADDR                     PROMPT
+brian    codex  ready  +0/-0  http://localhost:3003  Make a tooltip component
+gregory  codex  ready  +0/-0  http://localhost:3001  Add user authentication
+```
+
+The `ADDR` column shows the development server URL with the assigned port.
+
+## Related
+
+- [uzi.yaml Configuration](/configuration/uzi-yaml) - Full configuration reference
+- [Dev Command Configuration](/configuration/dev-commands) - How $PORT is used in devCommand

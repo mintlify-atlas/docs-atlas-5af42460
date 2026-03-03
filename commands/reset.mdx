@@ -1,0 +1,291 @@
+---
+title: reset
+description: Delete all Uzi data and start with a clean slate
+---
+
+## Synopsis
+
+```bash
+uzi reset
+```
+
+## Description
+
+The `reset` command permanently deletes all Uzi data from your system by removing the entire `~/.local/share/uzi` directory. This is a nuclear option that clears:
+
+- All state tracking (`state.json`)
+- All worktree directories
+- All configuration and metadata
+- All session history
+
+**This does NOT affect:**
+- Git repositories or branches (you'll need to clean those manually)
+- Tmux sessions (you'll need to kill those manually)
+- Your Uzi configuration file (`~/.config/uzi/config.json`)
+
+## Interactive Confirmation
+
+The command always asks for confirmation before proceeding:
+
+```
+This will permanently delete all uzi data from /home/user/.local/share/uzi
+Are you sure you want to continue? (y/N):
+```
+
+You must explicitly type `y` or `yes` to proceed. Any other input cancels the operation.
+
+## What Gets Deleted
+
+<AccordionGroup>
+  <Accordion title="State File">
+    **Location**: `~/.local/share/uzi/state.json`
+    
+    Contains all session metadata:
+    - Prompts
+    - Branch names
+    - Worktree paths
+    - Model names
+    - Dev server ports
+    - Timestamps
+  </Accordion>
+  
+  <Accordion title="Worktree Directories">
+    **Location**: `~/.local/share/uzi/worktrees/`
+    
+    Contains isolated git worktrees for all agents:
+    - Source code
+    - Uncommitted changes
+    - Build artifacts
+    - Node modules, etc.
+  </Accordion>
+  
+  <Accordion title="Worktree State Directories">
+    **Location**: `~/.local/share/uzi/worktree/`
+    
+    Internal state directories for each worktree.
+  </Accordion>
+  
+  <Accordion title="Any Other Data">
+    All other files and directories under `~/.local/share/uzi/`.
+  </Accordion>
+</AccordionGroup>
+
+## What Remains
+
+<Warning>
+  The `reset` command does **not** clean up:
+  
+  - **Git branches**: Agent branches remain in your repository
+  - **Tmux sessions**: Active agent sessions keep running
+  - **Configuration**: `~/.config/uzi/config.json` is preserved
+  
+  You must manually clean these up if desired.
+</Warning>
+
+## Examples
+
+### Basic Reset
+
+```bash
+$ uzi reset
+This will permanently delete all uzi data from /home/user/.local/share/uzi
+Are you sure you want to continue? (y/N): y
+Successfully reset all uzi data from /home/user/.local/share/uzi
+```
+
+### Cancel Reset
+
+```bash
+$ uzi reset
+This will permanently delete all uzi data from /home/user/.local/share/uzi
+Are you sure you want to continue? (y/N): n
+Reset cancelled
+```
+
+### No Data to Reset
+
+```bash
+$ uzi reset
+No uzi data found to reset
+```
+
+This happens if you've never run Uzi or already ran `reset`.
+
+## Complete Cleanup Workflow
+
+For a truly clean slate, combine `reset` with manual cleanup:
+
+<Steps>
+  <Step title="Kill All Agents">
+    ```bash
+    uzi kill all
+    ```
+    Terminates tmux sessions and removes git branches.
+  </Step>
+  
+  <Step title="Reset Uzi Data">
+    ```bash
+    uzi reset
+    ```
+    Removes all Uzi state and worktrees.
+  </Step>
+  
+  <Step title="Verify Cleanup (Optional)">
+    ```bash
+    # Check for remaining worktrees
+    git worktree list
+    
+    # Check for remaining agent branches
+    git branch | grep agent-
+    
+    # Check for remaining tmux sessions
+    tmux ls | grep agent-
+    ```
+  </Step>
+</Steps>
+
+## Manual Cleanup of Leftovers
+
+If you run `reset` without first running `uzi kill all`, you may have orphaned resources:
+
+### Clean Orphaned Git Worktrees
+
+```bash
+# List all worktrees
+git worktree list
+
+# Remove specific worktree
+git worktree remove <path>
+
+# Remove all worktrees (careful!)
+git worktree prune
+```
+
+### Clean Orphaned Git Branches
+
+```bash
+# List agent branches
+git branch | grep agent-
+
+# Delete specific branch
+git branch -D agent-project-hash-agentname
+
+# Delete all agent branches (careful!)
+git branch | grep agent- | xargs git branch -D
+```
+
+### Clean Orphaned Tmux Sessions
+
+```bash
+# List agent sessions
+tmux ls | grep agent-
+
+# Kill specific session
+tmux kill-session -t <session-name>
+
+# Kill all agent sessions (careful!)
+tmux ls | grep agent- | cut -d: -f1 | xargs -I {} tmux kill-session -t {}
+```
+
+## When to Use Reset
+
+<Check>
+  **Good reasons to reset:**
+  - Corrupted state file causing errors
+  - Starting a new project/workflow from scratch
+  - Debugging Uzi issues
+  - Freeing disk space after many experiments
+  - Testing Uzi setup/configuration
+</Check>
+
+<Warning>
+  **Avoid resetting when:**
+  - You have active agents with uncommitted work
+  - You want to preserve session history
+  - You only need to clean up specific agents (use `uzi kill` instead)
+</Warning>
+
+## Data Recovery
+
+<Warning>
+  **There is no undo for `uzi reset`**. All data in `~/.local/share/uzi` is permanently deleted.
+</Warning>
+
+If you need to preserve data before resetting:
+
+```bash
+# Backup state file
+cp ~/.local/share/uzi/state.json ~/uzi-state-backup.json
+
+# Backup specific worktree
+cp -r ~/.local/share/uzi/worktrees/agent-name ~/agent-backup/
+
+# Then reset
+uzi reset
+
+# Later, restore if needed
+cp ~/uzi-state-backup.json ~/.local/share/uzi/state.json
+```
+
+## Difference from `kill all`
+
+| Feature | reset | kill all |
+|---------|-------|----------|
+| **Deletes state** | ✓ | ✓ |
+| **Removes worktrees** | ✓ | ✓ |
+| **Deletes branches** | ✗ | ✓ |
+| **Kills tmux sessions** | ✗ | ✓ |
+| **Scope** | All repos | Current repo |
+| **Requires confirmation** | ✓ | ✗ |
+
+```bash
+# kill all: Graceful cleanup of current repo's agents
+uzi kill all
+
+# reset: Nuclear option removing all Uzi data
+uzi reset
+```
+
+## Impact on Running Agents
+
+If you run `reset` while agents are still running:
+
+1. **Tmux sessions continue** - Agents keep running but are no longer tracked
+2. **State is lost** - `uzi ls` won't show them anymore
+3. **Orphaned resources** - Worktrees, branches remain until manually cleaned
+
+**Best practice**: Always run `uzi kill all` before `uzi reset`.
+
+## After Reset
+
+After resetting, you can immediately start fresh:
+
+```bash
+# Reset everything
+uzi reset
+
+# Start with clean slate
+uzi prompt "new task"
+
+# Uzi recreates ~/.local/share/uzi/ automatically
+uzi ls
+```
+
+## Related Commands
+
+- [`kill`](/commands/kill) - Remove specific agents or all agents for current repo
+- [`ls`](/commands/ls) - Check what state exists before resetting
+
+## Notes
+
+<Tip>
+  Before running `reset`, use `uzi ls` to see what agents are active and `uzi kill all` to clean them up properly.
+</Tip>
+
+<Warning>
+  The `reset` command is **irreversible**. All state, worktrees, and metadata are permanently deleted.
+</Warning>
+
+<Note>
+  Configuration in `~/.config/uzi/config.json` is **not affected** by reset. Only data in `~/.local/share/uzi/` is deleted.
+</Note>

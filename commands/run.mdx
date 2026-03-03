@@ -1,0 +1,293 @@
+---
+title: run
+description: Execute shell commands across all agent sessions
+---
+
+## Synopsis
+
+```bash
+uzi run [OPTIONS] <command>
+```
+
+Alias: `r`
+
+## Description
+
+The `run` command executes a shell command in all active agent sessions for the current repository. Unlike `broadcast` which sends messages to agents, `run` executes actual shell commands and captures their output.
+
+Each command runs in a new tmux window within the agent's session, preserving the agent's working directory context.
+
+## Options
+
+<ParamField path="--delete" type="boolean" default="false">
+  Delete the tmux window after capturing the command output. This keeps sessions clean by removing temporary windows.
+</ParamField>
+
+<ParamField path="--config" type="string" default="~/.config/uzi/config.json">
+  Path to the configuration file.
+</ParamField>
+
+## Arguments
+
+<ParamField path="command" type="string" required>
+  The shell command to execute in all agent sessions. All arguments are joined with spaces to form the complete command.
+</ParamField>
+
+## How It Works
+
+<Steps>
+  <Step title="Get Active Sessions">
+    Retrieves all active sessions for the current repository from state
+  </Step>
+  
+  <Step title="For Each Session">
+    1. Creates a new tmux window with an auto-incremented index
+    2. Sends the command to that window
+    3. Presses Enter to execute
+    4. Captures the pane output
+    5. Displays the output
+    6. Optionally deletes the window (if `--delete` flag is set)
+  </Step>
+</Steps>
+
+## Examples
+
+### Check Git Status
+
+```bash
+# See git status in all agent worktrees
+uzi run git status
+```
+
+### Run Tests
+
+```bash
+# Execute test suite in all agents
+uzi run npm test
+```
+
+### List Modified Files
+
+```bash
+# See what files each agent has modified
+uzi run git diff --name-only
+```
+
+### With Auto-Cleanup
+
+```bash
+# Run command and delete the window afterward
+uzi run --delete git log --oneline -5
+```
+
+### Check Environment
+
+```bash
+# Verify environment variables or configuration
+uzi run env | grep NODE_ENV
+```
+
+### Multi-word Commands
+
+```bash
+# No quotes needed - args are joined
+uzi run git log --oneline --graph -10
+
+# Equivalent to:
+uzi run "git log --oneline --graph -10"
+```
+
+## Output Format
+
+For each session, the command displays:
+
+1. Session name header: `=== session-name ===`
+2. Captured command output
+3. Blank line separator
+
+Example:
+```
+Running command 'git status' in 2 agent sessions:
+
+=== agent-myproject-a3f2b1c-thoughtful-tesla ===
+On branch thoughtful-tesla-myproject-a3f2b1c-1234567890
+Changes not staged for commit:
+  modified:   src/auth.js
+
+=== agent-myproject-a3f2b1c-clever-curie ===  
+On branch clever-curie-myproject-a3f2b1c-1234567891
+nothing to commit, working tree clean
+```
+
+## Use Cases
+
+<AccordionGroup>
+  <Accordion title="Code Quality Checks">
+    Run linters or formatters across all agents:
+    
+    ```bash
+    uzi run npm run lint
+    uzi run --delete prettier --check .
+    ```
+  </Accordion>
+  
+  <Accordion title="Build Verification">
+    Check if agents' code compiles:
+    
+    ```bash
+    uzi run npm run build
+    uzi run --delete tsc --noEmit
+    ```
+  </Accordion>
+  
+  <Accordion title="Git Operations">
+    Perform git commands across all worktrees:
+    
+    ```bash
+    uzi run git log --oneline -5
+    uzi run git diff --stat
+    uzi run --delete git branch -v
+    ```
+  </Accordion>
+  
+  <Accordion title="Environment Inspection">
+    Debug or verify agent environments:
+    
+    ```bash
+    uzi run pwd
+    uzi run node --version
+    uzi run --delete ls -la
+    ```
+  </Accordion>
+  
+  <Accordion title="Test Execution">
+    Run tests in all agent contexts:
+    
+    ```bash
+    uzi run npm test -- --coverage
+    uzi run pytest tests/
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Window Management
+
+### Default Behavior
+
+By default, `run` creates a new window for each command execution:
+- Windows are numbered sequentially (0, 1, 2, ...)
+- Window remains open after command completes
+- You can attach to the session later and see the window
+
+### With `--delete` Flag
+
+When using `--delete`:
+- Window is created and command runs
+- Output is captured
+- Window is immediately killed
+- Keeps sessions clean with only the `:agent` window
+
+Example:
+```bash
+# Without --delete: creates persistent windows
+uzi run git status
+# Result: Each agent session now has an extra window
+
+# With --delete: temporary windows
+uzi run --delete git status  
+# Result: Agent sessions remain with just the :agent window
+```
+
+## Working Directory
+
+Commands execute in the agent's worktree directory, ensuring:
+- Git commands operate on the agent's isolated branch
+- File paths are relative to the agent's working copy
+- Environment is identical to what the agent sees
+
+## Error Handling
+
+- If no command is provided: `no command provided`
+- If no active sessions: `no active agent sessions found`
+- If window creation fails: Logs error and continues to next session
+- If command fails: Output is still captured and displayed
+
+## Comparison with `broadcast`
+
+| Feature | run | broadcast |
+|---------|-----|------------|
+| **Purpose** | Execute shell commands | Send messages to agents |
+| **Target** | New tmux window | Agent window |
+| **Output** | Captured and displayed | Not captured |
+| **Cleanup** | Optional with `--delete` | N/A |
+| **Use Case** | System commands, scripts | Agent instructions |
+
+Examples:
+```bash
+# Use run for shell commands
+uzi run git status
+uzi run npm test
+
+# Use broadcast for agent communication
+uzi broadcast "fix the failing tests"
+uzi broadcast "commit your changes"
+```
+
+## Advanced Examples
+
+### Parallel Testing
+
+```bash
+# Run different test suites in parallel
+uzi prompt --agents=random:3 "ready"
+uzi broadcast "run your assigned test suite"
+uzi run --delete npm test
+```
+
+### Conditional Execution
+
+```bash
+# Only run if tests pass
+uzi run "npm test && npm run build"
+```
+
+### Complex Commands
+
+```bash
+# Use shell features like pipes and redirection
+uzi run "git log --oneline | head -10 > /tmp/recent-commits.txt"
+uzi run cat /tmp/recent-commits.txt
+```
+
+### Chain Multiple Commands
+
+```bash
+# Execute multiple commands sequentially
+uzi run "npm install && npm test && npm run lint"
+```
+
+## Related Commands
+
+- [`broadcast`](/commands/broadcast) - Send messages to agents (not shell commands)
+- [`prompt`](/commands/prompt) - Create agents to run commands in
+- [`ls`](/commands/ls) - See which agents will execute the command
+- [`checkpoint`](/commands/checkpoint) - Merge results after running commands
+
+## Notes
+
+<Tip>
+  Use `--delete` flag when running read-only commands to keep sessions clean:
+  
+  ```bash
+  uzi run --delete git status
+  uzi run --delete npm run lint
+  ```
+</Tip>
+
+<Warning>
+  Commands run in parallel across all agents. Be cautious with commands that modify shared resources or have side effects.
+</Warning>
+
+<Note>
+  The command inherits the agent's environment and working directory, so file paths and environment variables are scoped to each agent's worktree.
+</Note>

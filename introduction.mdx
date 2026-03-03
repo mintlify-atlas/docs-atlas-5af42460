@@ -1,0 +1,144 @@
+---
+title: Introduction
+description: Uzi is a CLI tool for running multiple AI coding agents in parallel with automatic Git worktree and tmux session management
+---
+
+## What is Uzi?
+
+Uzi is a command-line tool that lets you run multiple AI coding agents in parallel, each working on the same task in isolated environments. Instead of running one AI agent at a time, you can spin up multiple agents (like Claude, Cursor, or Aider) and let them race to solve your coding challenge.
+
+<Note>
+Think of Uzi as a project manager for AI coding agents - it creates isolated workspaces, manages development servers, and helps you merge the best solutions back into your main codebase.
+</Note>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Parallel agent execution" icon="robot">
+    Run multiple AI coding agents simultaneously, each working on the same prompt in isolated environments
+  </Card>
+  
+  <Card title="Automatic worktree management" icon="code-branch">
+    Creates Git worktrees automatically so each agent works in complete isolation without conflicts
+  </Card>
+  
+  <Card title="Tmux session handling" icon="terminal">
+    Manages tmux sessions for each agent, making it easy to monitor and interact with multiple agents
+  </Card>
+  
+  <Card title="Port management" icon="server">
+    Automatically assigns ports and starts development servers for each agent with live previews
+  </Card>
+  
+  <Card title="Real-time monitoring" icon="chart-line">
+    Track agent status, code changes, and progress with the `uzi ls` command
+  </Card>
+  
+  <Card title="Easy checkpointing" icon="check">
+    Merge completed work from any agent back into your main branch with a single command
+  </Card>
+</CardGroup>
+
+## Why use Uzi?
+
+### Race multiple agents to find the best solution
+
+Different AI models have different strengths. By running multiple agents in parallel, you can:
+
+- Compare approaches from different AI models (Claude, GPT, etc.)
+- Get multiple implementations and choose the best one
+- Save time by parallelizing work instead of sequential attempts
+- Experiment with the same prompt across different tools
+
+### Isolated development environments
+
+Each agent gets its own:
+
+- Git worktree (complete isolation from your main code)
+- Tmux session (separate terminal environment)
+- Development server with dedicated port
+- Dependencies and build process
+
+### Automated workflow management
+
+Uzi handles the tedious parts:
+
+- Automatically confirms tool usage prompts with `uzi auto`
+- Monitors all agents for status changes
+- Tracks code diffs in real-time
+- Manages Git branches and worktrees
+
+## Prerequisites
+
+Before installing Uzi, make sure you have:
+
+<Steps>
+  <Step title="Git">
+    Required for version control and worktree management. Verify with:
+    ```bash
+    git --version
+    ```
+  </Step>
+  
+  <Step title="Tmux">
+    Required for terminal session management. Verify with:
+    ```bash
+    tmux -V
+    ```
+    
+    Install on macOS:
+    ```bash
+    brew install tmux
+    ```
+    
+    Install on Linux:
+    ```bash
+    sudo apt install tmux  # Debian/Ubuntu
+    sudo yum install tmux  # RHEL/CentOS
+    ```
+  </Step>
+  
+  <Step title="Go 1.24.3 or later">
+    Required for installing Uzi. Verify with:
+    ```bash
+    go version
+    ```
+    
+    Download from [golang.org](https://golang.org/dl/) if needed.
+  </Step>
+  
+  <Step title="AI coding tool">
+    At least one AI coding assistant like:
+    - `claude` (Claude CLI)
+    - `cursor` (Cursor AI)
+    - `aider` (Aider AI)
+    - Any other AI tool that works in the terminal
+  </Step>
+</Steps>
+
+## How it works
+
+When you run `uzi prompt`, here's what happens:
+
+1. **Creates Git worktrees** - One for each agent, based on your current branch
+2. **Spawns tmux sessions** - Isolated terminal environments for each agent
+3. **Starts dev servers** - Assigns unique ports and runs your dev command (if configured)
+4. **Launches agents** - Sends your prompt to each AI agent
+5. **Monitors progress** - Tracks changes and status in real-time
+6. **Enables checkpointing** - Lets you merge any agent's work back to your main branch
+
+<Tip>
+Uzi stores all worktrees in `~/.local/share/uzi/worktrees/` to keep your project directory clean.
+</Tip>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Uzi and set up your environment
+  </Card>
+  
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Run your first parallel agents in minutes
+  </Card>
+</CardGroup>

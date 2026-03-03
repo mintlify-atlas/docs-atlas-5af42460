@@ -1,0 +1,221 @@
+---
+title: broadcast
+description: Send a message to all active agent sessions simultaneously
+---
+
+## Synopsis
+
+```bash
+uzi broadcast <message>
+```
+
+Alias: `b`
+
+## Description
+
+The `broadcast` command sends a message to all active agent sessions in the current repository. The message is delivered to each agent's tmux pane, simulating user input.
+
+This is useful for:
+- Sending the same instruction to multiple agents
+- Requesting status updates from all agents
+- Coordinating parallel work across agents
+- Testing how different agents respond to the same prompt
+
+## Arguments
+
+<ParamField path="message" type="string" required>
+  The message to send to all agents. All arguments are joined with spaces to form the complete message.
+</ParamField>
+
+## How It Works
+
+1. Retrieves all active sessions for the current repository from state
+2. For each session:
+   - Sends the message to the agent's tmux window (`:agent`)
+   - Automatically presses Enter after the message
+   - Logs the action
+
+## Examples
+
+### Send Same Prompt to All Agents
+
+```bash
+# Ask all agents to run tests
+uzi broadcast "run the test suite and fix any failures"
+```
+
+### Request Status Updates
+
+```bash
+# Ask each agent for their progress
+uzi broadcast "what have you completed so far?"
+```
+
+### Multi-word Messages
+
+```bash
+# No quotes needed - all args are joined
+uzi broadcast please review your changes and commit them
+
+# Equivalent to:
+uzi broadcast "please review your changes and commit them"
+```
+
+### Coordinated Actions
+
+```bash
+# Start multiple agents on related tasks
+uzi prompt --agents=claude:3 "waiting for instructions"
+
+# Then broadcast specific instructions to all
+uzi broadcast "implement the user authentication flow"
+```
+
+## Typical Workflow
+
+<Steps>
+  <Step title="Launch Multiple Agents">
+    ```bash
+    uzi prompt --agents=random:3 "standby for task"
+    ```
+  </Step>
+  
+  <Step title="Verify Agents are Ready">
+    ```bash
+    uzi ls
+    ```
+    Check that all agents show "ready" status.
+  </Step>
+  
+  <Step title="Broadcast Instructions">
+    ```bash
+    uzi broadcast "implement feature X with different approaches"
+    ```
+  </Step>
+  
+  <Step title="Monitor Progress">
+    ```bash
+    uzi ls -w
+    ```
+    Watch agents work on the task in real-time.
+  </Step>
+</Steps>
+
+## Output
+
+The command displays:
+1. Total number of sessions receiving the message
+2. Each session name as messages are sent
+
+Example output:
+```
+Broadcasting message to 3 agent sessions:
+
+=== agent-myproject-a3f2b1c-thoughtful-tesla ===
+
+=== agent-myproject-a3f2b1c-clever-curie ===
+
+=== agent-myproject-a3f2b1c-brave-bohr ===
+```
+
+## Use Cases
+
+<AccordionGroup>
+  <Accordion title="Parallel Problem Solving">
+    Launch multiple agents and broadcast the same problem to see different approaches:
+    
+    ```bash
+    uzi prompt --agents=claude:3 "ready"
+    uzi broadcast "optimize the search algorithm for large datasets"
+    ```
+  </Accordion>
+  
+  <Accordion title="Coordinated Testing">
+    Have multiple agents test different scenarios:
+    
+    ```bash
+    uzi broadcast "write integration tests for the API endpoints"
+    ```
+  </Accordion>
+  
+  <Accordion title="Code Review">
+    Ask all agents to review their work:
+    
+    ```bash
+    uzi broadcast "review your changes, add comments, and commit"
+    ```
+  </Accordion>
+  
+  <Accordion title="Emergency Stop">
+    Send stop or reset instructions:
+    
+    ```bash
+    uzi broadcast "stop what you're doing and revert your changes"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Behavior Details
+
+### Message Delivery
+
+- Messages are sent using `tmux send-keys` to the `:agent` window
+- Enter is pressed automatically after the message
+- Double Enter is sent to ensure message submission
+
+### Session Scope
+
+- Only affects sessions in the **current repository**
+- Sessions from other repositories are unaffected
+- Session list is retrieved from Uzi's state file
+
+### Error Handling
+
+- If a session cannot receive the message, an error is logged but other sessions continue
+- No agents found results in an error: `no active agent sessions found`
+- Missing message argument results in: `message argument is required`
+
+## Comparison with `run`
+
+While both commands execute across all agents, they serve different purposes:
+
+| Feature | broadcast | run |
+|---------|-----------|-----|
+| **Purpose** | Send messages to agents | Execute shell commands |
+| **Target** | Agent window | New tmux window |
+| **Output** | Agent processes message | Command output captured |
+| **Use Case** | Agent instructions | System commands |
+
+Example:
+```bash
+# Use broadcast for agent communication
+uzi broadcast "implement feature X"
+
+# Use run for shell commands
+uzi run "git status"
+```
+
+## Related Commands
+
+- [`prompt`](/commands/prompt) - Create agents to broadcast to
+- [`ls`](/commands/ls) - See which agents will receive the broadcast
+- [`run`](/commands/run) - Execute shell commands across agents
+- [`auto`](/commands/auto) - Auto-handle prompts triggered by broadcasts
+
+## Notes
+
+<Warning>
+  The broadcast command sends messages to **all active agents** in the repository. Make sure you intend to message all of them before using this command.
+</Warning>
+
+<Tip>
+  Combine with `uzi ls` to verify which agents are active before broadcasting:
+  
+  ```bash
+  uzi ls && uzi broadcast "your message"
+  ```
+</Tip>
+
+<Note>
+  If an agent is in the middle of processing, the broadcast message will be queued and handled when the agent is ready for input.
+</Note>
